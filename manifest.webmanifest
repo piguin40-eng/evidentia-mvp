@@ -1,0 +1,19 @@
+{
+  "name": "Evidentia",
+  "short_name": "Evidentia",
+  "description": "Tu conocimiento vectorizado. Tu inteligencia amplificada.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070809",
+  "theme_color": "#070809",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
