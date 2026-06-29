@@ -1,15 +1,17 @@
-const CACHE_NAME = "evidentia-shell-v10-roi-intel";
+const CACHE_NAME = "evidentia-shell-v32-rag-refresh";
 const SHELL_ASSETS = [
-  "./",
-  "./index.html",
-  "./website.html",
-  "./website.css?v=20260617-roi-intel",
-  "./styles.css?v=20260617-roi-intel",
-  "./app.js?v=20260617-roi-intel",
-  "./manifest.webmanifest",
-  "./icon.svg",
-  "./assets/evidentia/evidentia-hero.mp4?v=20260617-roi-intel",
-  "./assets/evidentia/evidentia-hero-poster.jpg?v=20260617-roi-intel"
+  "./index.html?v=20260629-rag-refresh",
+  "./reset.html?v=20260622-mobile-reset",
+  "./website.html?v=20260622-good-web-restore",
+  "./website.css?v=20260622-good-web-restore",
+  "./styles.css?v=20260629-rag-refresh",
+  "./app.js?v=20260629-rag-refresh",
+  "./manifest.webmanifest?v=20260628-mobile-app",
+  "./icon.svg?v=20260624-mirror-e",
+  "./assets/icons/icon-192.png?v=20260628-mobile-app",
+  "./assets/icons/icon-512.png?v=20260628-mobile-app",
+  "./assets/evidentia/evidentia-reference-hero.mp4?v=20260618-reference-video",
+  "./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260618-reference-video"
 ];
 
 self.addEventListener("install", event => {
@@ -31,6 +33,24 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET") return;
+  const url = new URL(request.url);
+  const isFreshDocument =
+    request.mode === "navigate" ||
+    url.pathname === "/" ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/website.html") ||
+    url.pathname.endsWith("/reset.html") ||
+    url.pathname.endsWith("/manifest.webmanifest") ||
+    url.pathname.endsWith("/sw.js");
+
+  if (isFreshDocument) {
+    event.respondWith(
+      fetch(request, { cache: "no-store" })
+        .catch(() => caches.match(request).then(cached => cached || caches.match("./index.html?v=20260629-rag-refresh")))
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(request)
       .then(response => {
@@ -38,6 +58,6 @@ self.addEventListener("fetch", event => {
         caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
         return response;
       })
-      .catch(() => caches.match(request).then(cached => cached || caches.match("./index.html")))
+      .catch(() => caches.match(request).then(cached => cached || caches.match("./index.html?v=20260629-rag-refresh")))
   );
 });

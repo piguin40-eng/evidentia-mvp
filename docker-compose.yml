@@ -1,0 +1,12 @@
+services:
+  evidentia:
+    build: .
+    container_name: evidentia
+    restart: unless-stopped
+    ports:
+      - "8892:8892"
+    env_file:
+      - .env.production
+    volumes:
+      - ./data:/app/data
+      - ./backups:/app/backups

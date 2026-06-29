@@ -44,6 +44,8 @@ Guardar cualquier pieza de conocimiento profesional y transformarla automaticame
 - Evidentia QA: consulta trazable con fuentes y confianza.
 - Evidentia Chat: conversacion directa con el mapa vectorial propio.
 - Evidentia Intake: captura rapida desde voz, texto, PDF, imagen, video o integraciones.
+- Evidentia Connectors: exporta el espejo de conocimiento como paquete trazable o endpoint local para enlazarlo a agentes, projects, automatizaciones y workspaces externos bajo permisos.
+- Evidentia Video Memory: transcripcion de videos/audios propios o autorizados, chunking con timestamps e indexacion en el RAG privado del cliente.
 - Evidentia ROI: horas ahorradas, busquedas evitadas, protocolos reutilizados, errores evitados y tiempo de formacion estimado.
 - Evidentia Experts: memoria consultable por persona o equipo, por ejemplo "que haria Miguel Arroyo en este caso".
 - Evidentia Contradictions: deteccion de protocolos o criterios incompatibles.
@@ -68,6 +70,7 @@ Toda respuesta debe poder explicar:
 - No inventar relaciones.
 - No vender inferencias sin evidencia.
 - No apropiarse silenciosamente del conocimiento del cliente.
+- No enviar conocimiento a agentes, projects, nubes o automatizaciones externas sin permiso, trazabilidad y responsable definido.
 - No depender de una maqueta local para produccion.
 - No permitir que el conocimiento quede atrapado solo en texto plano.
 - No confundir patrones observados con verdades generales: todo descubrimiento debe incluir evidencia, volumen de muestra y confianza.

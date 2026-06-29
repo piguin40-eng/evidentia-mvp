@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Actualizando Evidentia</title>
+    <meta name="theme-color" content="#070809" />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background: #070809;
+        color: #eef1f5;
+        font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        width: min(420px, calc(100vw - 32px));
+        border: 1px solid #262b33;
+        border-radius: 8px;
+        padding: 22px;
+        background: #0d0f12;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        line-height: 1.15;
+      }
+      p { margin: 0; color: #aab2bd; }
+      .bar {
+        height: 3px;
+        margin: 18px 0 0;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #1c2027;
+      }
+      .bar::before {
+        content: "";
+        display: block;
+        width: 45%;
+        height: 100%;
+        background: linear-gradient(90deg, #5ee0c9, #7aa2ff, #c77dff);
+        animation: load 1s infinite ease-in-out;
+      }
+      @keyframes load {
+        0% { transform: translateX(-110%); }
+        100% { transform: translateX(240%); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Actualizando Evidentia</h1>
+      <p>Limpiando la version instalada sin borrar tus datos.</p>
+      <div class="bar" aria-hidden="true"></div>
+    </main>
+    <script>
+      async function resetAppShell() {
+        if ("serviceWorker" in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(registration => registration.unregister()));
+        }
+        if ("caches" in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(name => caches.delete(name)));
+        }
+        window.location.replace("./index.html?v=20260629-rag-refresh&reset=1");
+      }
+      resetAppShell().catch(function () {
+        window.location.replace("./index.html?v=20260629-rag-refresh&reset=1");
+      });
+    </script>
+  </body>
+</html>

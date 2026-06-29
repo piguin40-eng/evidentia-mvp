@@ -10,12 +10,15 @@ loop can run on Miguel's Mac without dependency setup.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
+import base64
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,10 +30,26 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "evidentia.sqlite"
 UPLOAD_DIR = DATA_DIR / "uploads"
-RAG_DIR = DATA_DIR / "rag" / "chroma"
+RAG_DIR = Path(os.getenv("EVIDENTIA_RAG_DIR", str(DATA_DIR / "rag" / "chroma"))).expanduser()
+VECTOR_DIR = DATA_DIR / "rag" / "vector"
+VECTOR_MATRIX_PATH = VECTOR_DIR / "embeddings.npy"
+VECTOR_IDS_PATH = VECTOR_DIR / "chunk_ids.json"
 VISION_DIR = DATA_DIR / "vision"
+DERIVED_DIR = DATA_DIR / "derived"
+AUDIO_DERIVED_DIR = DERIVED_DIR / "audio"
+TRANSCRIPT_DIR = DERIVED_DIR / "transcripts"
+EXPORT_DIR = DATA_DIR / "exports"
 CHROMA_COLLECTION = "evidentia_knowledge"
+ENABLE_CHROMA = os.getenv("EVIDENTIA_ENABLE_CHROMA", "").strip().lower() in {"1", "true", "yes"}
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+HOST = os.getenv("EVIDENTIA_HOST", "0.0.0.0")
+PORT = int(os.getenv("EVIDENTIA_PORT", "8892"))
+BASIC_AUTH_USER = os.getenv("EVIDENTIA_BASIC_AUTH_USER", "").strip()
+BASIC_AUTH_PASSWORD = os.getenv("EVIDENTIA_BASIC_AUTH_PASSWORD", "").strip()
+BASIC_AUTH_ENABLED = bool(BASIC_AUTH_USER and BASIC_AUTH_PASSWORD)
+AUTH_MODE = os.getenv("EVIDENTIA_AUTH_MODE", "basic").strip().lower()
+SESSION_COOKIE = "evidentia_session"
+SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode("utf-8")).hexdigest() if BASIC_AUTH_ENABLED else ""
 
 
 ENTITY_RULES = [
@@ -38,16 +57,13 @@ ENTITY_RULES = [
     ("discipline", "Rehabilitacion", re.compile(r"rehabilitacion|rehabilitación|protesis|prótesis|implante|implantologia|implantología", re.I)),
     ("discipline", "Estetica dental", re.compile(r"estetica|estética|sonrisa|carilla|veneer|mockup|mocap", re.I)),
     ("discipline", "Periodoncia", re.compile(r"periodoncia|encia|encía|periodontal|gingival", re.I)),
-    ("asset", "Fotografias", re.compile(r"foto|fotografia|fotografía|imagen|polarizada", re.I)),
-    ("asset", "Video", re.compile(r"video|vídeo|grabacion|grabación", re.I)),
-    ("asset", "PDF o documento", re.compile(r"pdf|documento|informe|consentimiento", re.I)),
-    ("asset", "Escaneo o archivo 3D", re.compile(r"stl|scan|escaneo|intraoral|cbct|dicom", re.I)),
     ("knowledge", "Nota de conocimiento", re.compile(r"nota|transcripcion|transcripción|decision|decisión|criterio|observacion|observación", re.I)),
     ("knowledge", "Protocolo o aprendizaje", re.compile(r"protocolo|aprendizaje|leccion|lección|recordar|conocimiento", re.I)),
     ("measurement", "CIELAB", re.compile(r"cielab|l\*|a\*|b\*|delta e|de00", re.I)),
     ("measurement", "Medicion", re.compile(r"medicion|medición|medida|espesor|grosor|\d+(?:[.,]\d+)?\s*mm", re.I)),
     ("outcome", "Resultado o seguimiento", re.compile(r"resultado|exito|éxito|fracaso|estable|seguimiento|dolor|problema|revision|revisión", re.I)),
-    ("evidence", "Evidencia asociada", re.compile(r"evidencia|radiografia|radiografía|scan|pdf|documento|foto|video", re.I)),
+    ("pattern", "Patron odontologico", re.compile(r"patron|patrón|recurrencia|repetido|similar|similares|tendencia", re.I)),
+    ("clinical_focus", "Seguimiento oclusal", re.compile(r"oclusal|oclusion|oclusión|mordida|contactos|guia anterior|guía anterior|desoclusion|desoclusión", re.I)),
 ]
 
 
@@ -56,6 +72,10 @@ def connect() -> sqlite3.Connection:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     RAG_DIR.mkdir(parents=True, exist_ok=True)
     VISION_DIR.mkdir(parents=True, exist_ok=True)
+    AUDIO_DERIVED_DIR.mkdir(parents=True, exist_ok=True)
+    TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    VECTOR_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -122,6 +142,13 @@ def connect() -> sqlite3.Connection:
             text TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunks_fts USING fts5(
+            chunk_id UNINDEXED,
+            record_id UNINDEXED,
+            source_name UNINDEXED,
+            text
+        );
         """
     )
     return conn
@@ -165,6 +192,10 @@ def chunk_text(text: str, size: int = 900, overlap: int = 140) -> list[str]:
     return chunks
 
 
+def comparable_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
 def extract_text_from_path(path: Path, mime_type: str | None = None) -> str:
     suffix = path.suffix.lower()
     mime_type = mime_type or mimetypes.guess_type(path.name)[0] or ""
@@ -179,9 +210,117 @@ def extract_text_from_path(path: Path, mime_type: str | None = None) -> str:
         return "\n".join((page.extract_text() or "") for page in reader.pages)
     if mime_type.startswith("image/") or suffix in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}:
         return analyze_image(path)
-    if mime_type.startswith("video/") or suffix in {".mp4", ".mov", ".m4v"}:
+    if mime_type.startswith("audio/") or suffix in {".mp3", ".wav", ".m4a", ".ogg", ".opus", ".aac", ".flac"}:
+        return transcribe_media(path, media_kind="audio")
+    if mime_type.startswith("video/") or suffix in {".mp4", ".mov", ".m4v", ".webm"}:
         return analyze_video(path)
     return "Archivo guardado para el mapa de conocimiento: " + path.name
+
+
+def transcribe_media(path: Path, media_kind: str = "media") -> str:
+    AUDIO_DERIVED_DIR.mkdir(parents=True, exist_ok=True)
+    TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
+    if not shutil.which("ffmpeg"):
+        return f"{media_kind.capitalize()} guardado sin transcripcion: ffmpeg no esta disponible. Archivo: {path.name}"
+    if not shutil.which("whisper"):
+        return f"{media_kind.capitalize()} guardado sin transcripcion: Whisper CLI no esta disponible. Archivo: {path.name}"
+
+    with path.open("rb") as source:
+        source_sample = source.read(1024).hex()
+    source_key = stable_id(path.name, str(path.stat().st_size), source_sample)
+    audio_path = AUDIO_DERIVED_DIR / f"{source_key}_{safe_filename(path.stem)}.wav"
+    transcript_json = TRANSCRIPT_DIR / f"{audio_path.stem}.json"
+    transcript_txt = TRANSCRIPT_DIR / f"{audio_path.stem}.txt"
+
+    try:
+        if not audio_path.exists() or audio_path.stat().st_size == 0:
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(path),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    str(audio_path),
+                ],
+                timeout=180,
+                check=True,
+            )
+        if not transcript_json.exists() or transcript_json.stat().st_size == 0:
+            subprocess.run(
+                [
+                    "whisper",
+                    str(audio_path),
+                    "--model",
+                    "turbo",
+                    "--output_format",
+                    "json",
+                    "--output_dir",
+                    str(TRANSCRIPT_DIR),
+                ],
+                timeout=900,
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+    except subprocess.TimeoutExpired:
+        return f"{media_kind.capitalize()} guardado; transcripcion pendiente porque el procesamiento supero el tiempo limite local. Archivo: {path.name}"
+    except Exception as exc:
+        return f"{media_kind.capitalize()} guardado; fallo la transcripcion local. Archivo: {path.name}. Error: {exc}"
+
+    try:
+        payload = json.loads(transcript_json.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return f"{media_kind.capitalize()} guardado; Whisper genero una salida no legible. Archivo: {path.name}. Error: {exc}"
+
+    segments = payload.get("segments") or []
+    language = payload.get("language") or "desconocido"
+    lines = [
+        f"Transcripcion local de {media_kind}: {path.name}.",
+        f"Idioma detectado: {language}.",
+        f"Audio derivado: {audio_path.relative_to(ROOT)}.",
+        f"Transcripcion JSON: {transcript_json.relative_to(ROOT)}.",
+        "El texto siguiente se indexa en el RAG con marcas de tiempo aproximadas:",
+    ]
+    plain_lines = []
+    for segment in segments:
+        start = float(segment.get("start") or 0)
+        end = float(segment.get("end") or 0)
+        text = str(segment.get("text") or "").strip()
+        if not text:
+            continue
+        timestamp = f"[{format_timestamp(start)} - {format_timestamp(end)}]"
+        lines.append(f"{timestamp} {text}")
+        plain_lines.append(f"{timestamp} {text}")
+
+    if not plain_lines:
+        fallback_text = str(payload.get("text") or "").strip()
+        if fallback_text:
+            lines.append(fallback_text)
+            plain_lines.append(fallback_text)
+    if plain_lines:
+        transcript_txt.write_text("\n".join(plain_lines) + "\n", encoding="utf-8")
+        lines.append(f"Transcripcion TXT: {transcript_txt.relative_to(ROOT)}.")
+    else:
+        lines.append("Whisper no devolvio texto transcribible.")
+
+    lines.append("Advertencia: la transcripcion puede contener errores y debe revisarse antes de usarla como criterio definitivo.")
+    return "\n".join(lines)
+
+
+def format_timestamp(seconds: float) -> str:
+    seconds = max(0, seconds)
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
 
 
 def analyze_image(path: Path, label: str | None = None) -> str:
@@ -250,17 +389,27 @@ def analyze_video(path: Path) -> str:
     frame_analysis = [analyze_image(frame, label=f"frame {idx + 1}") for idx, frame in enumerate(frame_paths)]
     if not frame_analysis:
         frame_analysis.append("No se pudieron extraer frames analizables con ffmpeg.")
+    transcript = transcribe_media(path, media_kind="video")
     return (
         f"Analisis visual local de video: {path.name}; duracion {duration}; frames extraidos {len(frame_paths)}. "
         + " ".join(frame_analysis)
-        + " Transcripcion de audio y vision semantica avanzada pendientes de activar."
+        + " "
+        + transcript
+        + " Vision semantica avanzada pendiente de activar."
     )
 
 
 def index_record_in_rag(record: dict) -> int:
-    collection = get_chroma_collection()
+    collection = None
+    if ENABLE_CHROMA:
+        try:
+            collection = get_chroma_collection()
+        except Exception:
+            pass
     chunks_payload: list[tuple[str, str, str]] = []
-    chunks_payload.append(("nota del caso", "record_notes", record["notes"]))
+    notes_text = record["notes"]
+    normalized_notes = comparable_text(notes_text)
+    chunks_payload.append(("nota del caso", "record_notes", notes_text))
 
     for file_item in record.get("files", []):
         storage_uri = file_item.get("storageUri")
@@ -271,7 +420,10 @@ def index_record_in_rag(record: dict) -> int:
         if ROOT not in path.parents and path != ROOT:
             continue
         if path.exists():
-            chunks_payload.append((name, "file_text", extract_text_from_path(path, file_item.get("type"))))
+            file_text = extract_text_from_path(path, file_item.get("type"))
+            normalized_file = comparable_text(file_text)
+            if normalized_file and normalized_file not in normalized_notes and normalized_notes not in normalized_file:
+                chunks_payload.append((name, "file_text", file_text))
 
     ids: list[str] = []
     docs: list[str] = []
@@ -296,29 +448,51 @@ def index_record_in_rag(record: dict) -> int:
 
     with connect() as conn:
         conn.execute("DELETE FROM rag_chunks WHERE record_id = ?", (record["id"],))
+        conn.execute("DELETE FROM rag_chunks_fts WHERE record_id = ?", (record["id"],))
         conn.executemany(
             "INSERT OR REPLACE INTO rag_chunks (id, record_id, source_name, chunk_index, text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             rows,
         )
+        conn.executemany(
+            "INSERT INTO rag_chunks_fts (chunk_id, record_id, source_name, text) VALUES (?, ?, ?, ?)",
+            [(chunk_id, record_id, source_name, text) for chunk_id, record_id, source_name, _index, text, _created_at in rows],
+        )
 
-    try:
-        collection.delete(where={"record_id": record["id"]})
-    except Exception:
-        pass
-    if ids:
-        collection.add(ids=ids, documents=docs, metadatas=metadatas)
+    if collection is not None:
+        try:
+            collection.delete(where={"record_id": record["id"]})
+        except Exception:
+            pass
+        if ids:
+            collection.add(ids=ids, documents=docs, metadatas=metadatas)
     return len(ids)
 
 
 def rag_stats() -> dict:
-    stats = {"path": str(RAG_DIR), "collection": CHROMA_COLLECTION, "chunks": 0, "backend": "chroma"}
-    try:
-        stats["chunks"] = get_chroma_collection().count()
-    except Exception as exc:
-        stats["backend"] = "unavailable"
-        stats["error"] = str(exc)
+    stats = {
+        "path": str(RAG_DIR),
+        "collection": CHROMA_COLLECTION,
+        "chunks": 0,
+        "backend": "compact_vector",
+        "vectorPath": str(VECTOR_MATRIX_PATH),
+        "compactVectorChunks": 0,
+    }
+    if VECTOR_IDS_PATH.exists():
+        try:
+            with VECTOR_IDS_PATH.open("r", encoding="utf-8") as handle:
+                stats["compactVectorChunks"] = len(json.load(handle))
+            stats["chunks"] = stats["compactVectorChunks"]
+        except Exception as exc:
+            stats["vectorError"] = str(exc)
+    if ENABLE_CHROMA:
+        try:
+            stats["chromaChunks"] = get_chroma_collection().count()
+        except Exception as exc:
+            stats["chromaError"] = str(exc)
     with connect() as conn:
         stats["sqliteChunks"] = conn.execute("SELECT COUNT(*) FROM rag_chunks").fetchone()[0]
+        stats["records"] = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+        stats["yolitoRecords"] = conn.execute("SELECT COUNT(*) FROM records WHERE record_type = ?", ("Yolito Ceram source",)).fetchone()[0]
     return stats
 
 
@@ -377,50 +551,156 @@ def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
         return "OpenAI configurado, pero la llamada fallo. Respuesta RAG local mantenida. Error: " + str(exc)
 
 
+_VECTOR_CACHE: dict[str, object] = {}
+
+
+def compact_vector_rag_chunks(question: str, limit: int = 6) -> list[dict]:
+    if not VECTOR_MATRIX_PATH.exists() or not VECTOR_IDS_PATH.exists():
+        return []
+    try:
+        import numpy as np
+        from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+    except Exception:
+        return []
+
+    try:
+        cache_key = str(VECTOR_MATRIX_PATH)
+        if _VECTOR_CACHE.get("key") != cache_key:
+            matrix = np.load(VECTOR_MATRIX_PATH, mmap_mode="r")
+            with VECTOR_IDS_PATH.open("r", encoding="utf-8") as handle:
+                ids = json.load(handle)
+            _VECTOR_CACHE.clear()
+            _VECTOR_CACHE.update({"key": cache_key, "matrix": matrix, "ids": ids, "embedder": DefaultEmbeddingFunction()})
+        matrix = _VECTOR_CACHE["matrix"]
+        ids = _VECTOR_CACHE["ids"]
+        embedder = _VECTOR_CACHE["embedder"]
+        query = np.asarray(embedder([question])[0], dtype="float32")
+        norm = np.linalg.norm(query)
+        if not norm:
+            return []
+        query = query / norm
+        scores = np.asarray(matrix @ query)
+        if scores.size == 0:
+            return []
+        top_count = min(limit, scores.size)
+        top_indexes = np.argpartition(-scores, top_count - 1)[:top_count]
+        top_indexes = top_indexes[np.argsort(-scores[top_indexes])]
+        chunk_ids = [ids[int(index)] for index in top_indexes]
+        score_by_id = {ids[int(index)]: float(scores[int(index)]) for index in top_indexes}
+    except Exception:
+        return []
+
+    placeholders = ",".join("?" for _ in chunk_ids)
+    with connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
+                   r.patient_code, r.domain, r.record_type
+            FROM rag_chunks c
+            LEFT JOIN records r ON r.id = c.record_id
+            WHERE c.id IN ({placeholders})
+            """,
+            chunk_ids,
+        ).fetchall()
+    by_id = {row["id"]: row for row in rows}
+    chunks = []
+    for chunk_id in chunk_ids:
+        row = by_id.get(chunk_id)
+        if not row:
+            continue
+        chunks.append({
+            "id": row["id"],
+            "text": row["text"],
+            "metadata": {
+                "record_id": row["record_id"],
+                "patient_code": row["patient_code"],
+                "domain": row["domain"],
+                "record_type": row["record_type"],
+                "source_name": row["source_name"],
+                "source_type": "compact_vector",
+                "chunk_index": row["chunk_index"],
+            },
+            "distance": 1.0 - score_by_id.get(chunk_id, 0.0),
+            "vector_score": score_by_id.get(chunk_id, 0.0),
+        })
+    return chunks
+
+
 def query_rag(question: str, n_results: int = 6) -> dict:
     question = question.strip()
     if not question:
         return {"answer": "Haz una pregunta sobre el conocimiento guardado.", "sources": [], "chunks": []}
-    collection = get_chroma_collection()
-    result = collection.query(query_texts=[question], n_results=n_results)
-    ids = result.get("ids", [[]])[0]
-    docs = result.get("documents", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
-    distances = result.get("distances", [[]])[0] if result.get("distances") else [None] * len(ids)
-    chunks = []
+    lexical_chunks = lexical_rag_chunks(question, limit=n_results)
+    chunks = list(lexical_chunks)
+    seen_chunk_ids = {chunk["id"] for chunk in chunks}
     record_ids = []
-    for chunk_id, doc, metadata, distance in zip(ids, docs, metadatas, distances):
-        metadata = metadata or {}
-        record_id = metadata.get("record_id")
+    vector_error = None
+    for chunk in compact_vector_rag_chunks(question, limit=n_results):
+        if chunk["id"] in seen_chunk_ids:
+            continue
+        chunks.append(chunk)
+        seen_chunk_ids.add(chunk["id"])
+    try:
+        if not ENABLE_CHROMA:
+            raise RuntimeError("Chroma disabled; compact vector retrieval used.")
+        collection = get_chroma_collection()
+        result = collection.query(query_texts=[question], n_results=n_results)
+        ids = result.get("ids", [[]])[0]
+        docs = result.get("documents", [[]])[0]
+        metadatas = result.get("metadatas", [[]])[0]
+        distances = result.get("distances", [[]])[0] if result.get("distances") else [None] * len(ids)
+        for chunk_id, doc, metadata, distance in zip(ids, docs, metadatas, distances):
+            if chunk_id in seen_chunk_ids:
+                continue
+            metadata = metadata or {}
+            record_id = metadata.get("record_id")
+            if record_id and record_id not in record_ids:
+                record_ids.append(record_id)
+            chunks.append({
+                "id": chunk_id,
+                "text": doc,
+                "metadata": metadata,
+                "distance": distance,
+            })
+            seen_chunk_ids.add(chunk_id)
+    except Exception as exc:
+        vector_error = str(exc)
+    for chunk in chunks:
+        record_id = chunk.get("metadata", {}).get("record_id")
         if record_id and record_id not in record_ids:
             record_ids.append(record_id)
-        chunks.append({
-            "id": chunk_id,
-            "text": doc,
-            "metadata": metadata,
-            "distance": distance,
-        })
 
     sources = records_by_ids(record_ids)
     if not chunks:
         return {
-            "answer": "No encuentro todavia contenido vectorizado para esa pregunta. Arrastra una transcripcion, PDF, nota o archivo y guardalo en el mapa.",
+            "answer": "No tengo contenido tuyo guardado para responder a esa pregunta. Guarda una nota, TXT, audio, PDF o caso y vuelvo a buscar solo en tus fuentes.",
             "sources": [],
             "chunks": [],
         }
 
-    top_lines = []
+    top_lines = ["Según lo que tienes guardado:"]
     for index, chunk in enumerate(chunks[:3], 1):
         metadata = chunk["metadata"]
-        top_lines.append(f"{index}. {metadata.get('patient_code', 'registro')} · {metadata.get('source_name', 'fuente')}: {chunk['text'][:260]}")
-    local_answer = (
-        f"He buscado en la base vectorial Chroma y encontre {len(chunks)} fragmentos relevantes.\n\n"
-        + "\n".join(top_lines)
-        + "\n\nRespuesta prudente: usa estas fuentes como memoria recuperada. Para una conclusion accionable, una persona cualificada debe validar el contexto completo."
-    )
+        source = metadata.get("source_name", "fuente")
+        text = re.sub(r"\s+", " ", chunk["text"]).strip()
+        top_lines.append(f"{index}. {text[:420]}\n   Fuente: {metadata.get('patient_code', 'registro')} · {source}")
+    local_answer = "\n\n".join(top_lines)
     synthesized = openai_synthesize(question, chunks)
-    answer = synthesized or local_answer
-    return {"answer": answer, "sources": sources, "chunks": chunks, "ai": ai_status()}
+    if synthesized and not synthesized.startswith("OpenAI configurado, pero la llamada fallo."):
+        answer = synthesized
+    elif synthesized:
+        answer = (
+            local_answer
+            + "\n\nNota tecnica: OpenAI esta configurado, pero la sintesis externa no respondio en esta corrida. "
+            "La respuesta anterior se mantiene en modo RAG local con fuentes recuperadas."
+        )
+    else:
+        answer = local_answer
+    response = {"answer": answer, "sources": sources, "chunks": chunks, "ai": ai_status()}
+    if vector_error and not any(chunk.get("metadata", {}).get("source_type") == "compact_vector" for chunk in chunks):
+        response["rag_warning"] = "Vector search unavailable; SQLite lexical retrieval used."
+        response["rag_error"] = vector_error
+    return response
 
 
 def anonymize(raw: str) -> str:
@@ -463,8 +743,12 @@ def relation_for(entity_type: str) -> str:
 
 def normalize_record(payload: dict) -> dict:
     notes = str(payload.get("notes") or "").strip()
-    if not notes:
-        raise ValueError("notes is required")
+    files = payload.get("files") or []
+    if not notes and not files:
+        raise ValueError("notes or files are required")
+    if not notes and files:
+        file_names = ", ".join(str(item.get("name") or "archivo") for item in files[:6])
+        notes = "Registro creado desde archivos adjuntos. Fuentes asociadas: " + file_names
 
     patient_code = str(payload.get("patientCode") or "").strip()
     patient_raw = str(payload.get("patient") or "").strip()
@@ -473,7 +757,6 @@ def normalize_record(payload: dict) -> dict:
 
     record_id = str(payload.get("id") or stable_id(patient_code, notes, now_iso()))
     entities = payload.get("entities") or extract_entities(notes)
-    files = payload.get("files") or []
     created_at = str(payload.get("createdAt") or now_iso())
 
     return {
@@ -495,6 +778,8 @@ def normalize_record(payload: dict) -> dict:
 def build_graph(patient_code: str, entities: list[dict], files: list[dict]) -> list[dict]:
     graph = [{"type": "identity", "label": patient_code, "relation": "caso_anonimizado"}]
     for entity in entities:
+        if entity.get("type") in {"asset", "evidence"}:
+            continue
         graph.append({"type": entity["type"], "label": entity["label"], "relation": relation_for(entity["type"])})
     for file_item in files:
         graph.append({"type": "evidence", "label": str(file_item.get("name") or "archivo"), "relation": "evidencia_asociada"})
@@ -558,7 +843,8 @@ def save_record(record: dict) -> dict:
 
 
 def row_to_record(row: sqlite3.Row, conn: sqlite3.Connection) -> dict:
-    entities = [dict(item) for item in conn.execute("SELECT type, label, confidence, source FROM entities WHERE record_id = ? ORDER BY type, label", (row["id"],))]
+    raw_entities = [dict(item) for item in conn.execute("SELECT type, label, confidence, source FROM entities WHERE record_id = ? ORDER BY type, label", (row["id"],))]
+    entities = [entity for entity in raw_entities if entity.get("type") not in {"asset", "evidence"}]
     files = [dict(item) for item in conn.execute("SELECT name, mime_type AS type, size, storage_uri AS storageUri, sha256 FROM evidence WHERE record_id = ? ORDER BY name", (row["id"],))]
     return {
         "id": row["id"],
@@ -578,7 +864,7 @@ def row_to_record(row: sqlite3.Row, conn: sqlite3.Connection) -> dict:
 
 def list_records() -> list[dict]:
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM records ORDER BY created_at DESC LIMIT 250").fetchall()
+        rows = conn.execute("SELECT * FROM records ORDER BY created_at DESC LIMIT 1000").fetchall()
         return [row_to_record(row, conn) for row in rows]
 
 
@@ -590,6 +876,136 @@ def records_by_ids(record_ids: list[str]) -> list[dict]:
         rows = conn.execute(f"SELECT * FROM records WHERE id IN ({placeholders})", record_ids).fetchall()
         by_id = {row["id"]: row_to_record(row, conn) for row in rows}
     return [by_id[item] for item in record_ids if item in by_id]
+
+
+def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
+    terms = [term.lower() for term in re.findall(r"[\wÀ-ÿ.*+-]+", question, flags=re.UNICODE) if len(term) >= 4]
+    if not terms:
+        return []
+    fts_query = " OR ".join(f'"{term.replace(chr(34), chr(34) + chr(34))}"' for term in terms[:12])
+    if fts_query:
+        try:
+            with connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
+                           r.patient_code, r.domain, r.record_type,
+                           bm25(rag_chunks_fts) AS rank
+                    FROM rag_chunks_fts
+                    JOIN rag_chunks c ON c.id = rag_chunks_fts.chunk_id
+                    LEFT JOIN records r ON r.id = c.record_id
+                    WHERE rag_chunks_fts MATCH ?
+                    ORDER BY rank ASC, c.chunk_index ASC
+                    LIMIT ?
+                    """,
+                    (fts_query, limit),
+                ).fetchall()
+            if rows:
+                return [{
+                    "id": row["id"],
+                    "text": row["text"],
+                    "metadata": {
+                        "record_id": row["record_id"],
+                        "patient_code": row["patient_code"],
+                        "domain": row["domain"],
+                        "record_type": row["record_type"],
+                        "source_name": row["source_name"],
+                        "source_type": "sqlite_fts",
+                        "chunk_index": row["chunk_index"],
+                    },
+                    "distance": None,
+                    "lexical_score": float(row["rank"]),
+                } for row in rows]
+        except Exception:
+            pass
+    matches: list[tuple[int, dict]] = []
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
+                   r.patient_code, r.domain, r.record_type
+            FROM rag_chunks c
+            LEFT JOIN records r ON r.id = c.record_id
+            ORDER BY c.created_at DESC, c.chunk_index ASC
+            """
+        ).fetchall()
+    for row in rows:
+        text = row["text"] or ""
+        haystack = text.lower()
+        score = sum(1 for term in terms if term in haystack)
+        if score:
+            matches.append((score, dict(row)))
+    matches.sort(key=lambda item: (-item[0], item[1]["chunk_index"]))
+    chunks = []
+    for score, row in matches[:limit]:
+        chunks.append({
+            "id": row["id"],
+            "text": row["text"],
+            "metadata": {
+                "record_id": row["record_id"],
+                "patient_code": row.get("patient_code") if hasattr(row, "get") else row["patient_code"],
+                "domain": row.get("domain") if hasattr(row, "get") else row["domain"],
+                "record_type": row.get("record_type") if hasattr(row, "get") else row["record_type"],
+                "source_name": row["source_name"],
+                "source_type": "sqlite_lexical",
+                "chunk_index": row["chunk_index"],
+            },
+            "distance": None,
+            "lexical_score": score,
+        })
+    return chunks
+
+
+def list_rag_chunks(limit: int = 1000) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, record_id, source_name, chunk_index, text, created_at
+            FROM rag_chunks
+            ORDER BY created_at DESC, chunk_index ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def build_connector_export() -> dict:
+    records = list_records()
+    chunks = list_rag_chunks()
+    files_count = sum(len(record.get("files") or []) for record in records)
+    return {
+        "schema": "evidentia.knowledge_bundle.v1",
+        "generatedAt": now_iso(),
+        "source": "evidentia-local-node",
+        "policy": {
+            "allowedUse": "Conectar conocimiento validado a agentes, proyectos o automatizaciones bajo permiso del propietario.",
+            "humanReviewRequired": True,
+            "medicalOrLegalDecision": False,
+            "externalTransferRequiresConsent": True,
+        },
+        "stats": {
+            "records": len(records),
+            "files": files_count,
+            "chunks": len(chunks),
+            "database": str(DB_PATH),
+            "ragPath": str(RAG_DIR),
+        },
+        "records": records,
+        "chunks": chunks,
+        "connectorHints": [
+            {
+                "target": "agent_or_project",
+                "method": "import_json",
+                "recommendedPrompt": "Usa este bundle como memoria privada trazable. Responde citando record_id, source_name y chunk_index. No tomes decisiones clinicas, legales o economicas sin revision humana.",
+            },
+            {
+                "target": "automation",
+                "method": "GET /api/connectors/export",
+                "recommendedGuardrail": "Limitar acceso a red local, registrar responsable y exigir consentimiento antes de enviar datos fuera del nodo.",
+            },
+        ],
+    }
 
 
 def search_records(query: str) -> list[dict]:
@@ -616,8 +1032,125 @@ def search_records(query: str) -> list[dict]:
 class Handler(BaseHTTPRequestHandler):
     server_version = "Evidentia/0.1"
 
+    def require_auth(self) -> bool:
+        if not BASIC_AUTH_ENABLED:
+            return True
+        if AUTH_MODE == "cookie":
+            cookie_header = self.headers.get("Cookie", "")
+            cookies = dict(
+                item.strip().split("=", 1)
+                for item in cookie_header.split(";")
+                if "=" in item
+            )
+            if hmac.compare_digest(cookies.get(SESSION_COOKIE, ""), SESSION_TOKEN):
+                return True
+            self.redirect_to_login()
+            return False
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Basic "):
+            self.send_auth_required()
+            return False
+        try:
+            decoded = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
+        except Exception:
+            self.send_auth_required()
+            return False
+        username, sep, password = decoded.partition(":")
+        if not sep:
+            self.send_auth_required()
+            return False
+        if hmac.compare_digest(username, BASIC_AUTH_USER) and hmac.compare_digest(password, BASIC_AUTH_PASSWORD):
+            return True
+        self.send_auth_required()
+        return False
+
+    def send_auth_required(self) -> None:
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Evidentia"')
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        body = b'{"error":"authentication_required"}'
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def redirect_to_login(self) -> None:
+        self.send_response(302)
+        self.send_header("Location", "/login.html")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def serve_login(self, error: str = "") -> None:
+        escaped_error = "<p class='error'>Usuario o clave incorrectos.</p>" if error else ""
+        body = f'''<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Evidentia - acceso</title>
+    <meta name="theme-color" content="#070809" />
+    <style>
+      :root {{ color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+      body {{ min-height: 100vh; margin: 0; display: grid; place-items: center; background: #070809; color: #f4fbf8; padding: 24px; }}
+      main {{ width: min(420px, 100%); }}
+      .brand {{ font-size: 30px; font-weight: 800; letter-spacing: .08em; margin-bottom: 10px; }}
+      p {{ color: #9fb4ad; line-height: 1.45; }}
+      form {{ display: grid; gap: 14px; margin-top: 26px; }}
+      label {{ display: grid; gap: 7px; color: #d7e7e2; font-size: 13px; }}
+      input {{ appearance: none; border: 1px solid #28423d; background: #0d1413; color: white; border-radius: 12px; padding: 14px; font-size: 16px; }}
+      button {{ border: 0; border-radius: 12px; padding: 15px; font-weight: 800; background: #9ff4dc; color: #06110e; font-size: 16px; }}
+      .error {{ color: #ffb4a8; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">EVIDENTIA</div>
+      <p>Acceso privado al nodo de conocimiento. Inicia sesion para continuar.</p>
+      {escaped_error}
+      <form method="post" action="/api/login">
+        <label>Usuario<input name="username" autocomplete="username" required /></label>
+        <label>Clave<input name="password" type="password" autocomplete="current-password" required /></label>
+        <button type="submit">Entrar</button>
+      </form>
+    </main>
+  </body>
+</html>'''
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def handle_login(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8", errors="replace")
+        content_type = self.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            payload = json.loads(raw or "{}")
+            username = str(payload.get("username") or "")
+            password = str(payload.get("password") or "")
+        else:
+            payload = parse_qs(raw)
+            username = payload.get("username", [""])[0]
+            password = payload.get("password", [""])[0]
+        if hmac.compare_digest(username, BASIC_AUTH_USER) and hmac.compare_digest(password, BASIC_AUTH_PASSWORD):
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", f"{SESSION_COOKIE}={SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        self.serve_login(error="1")
+
     def do_HEAD(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/login.html":
+            self.send_response(200)
+            self.end_headers()
+            return
+        if not self.require_auth():
+            return
         relative = "index.html" if parsed.path in {"", "/"} else parsed.path.lstrip("/")
         file_path = (ROOT / relative).resolve()
         if not file_path.exists() or not file_path.is_file():
@@ -626,11 +1159,20 @@ class Handler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_cache_headers(file_path)
         self.send_header("Content-Length", str(file_path.stat().st_size))
         self.end_headers()
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/healthz":
+            self.write_json({"ok": True, "service": "evidentia"})
+            return
+        if parsed.path == "/login.html":
+            self.serve_login()
+            return
+        if not self.require_auth():
+            return
         if parsed.path == "/api/health":
             self.write_json({"ok": True, "database": str(DB_PATH), "records": len(list_records())})
             return
@@ -644,6 +1186,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/rag/stats":
             self.write_json(rag_stats())
             return
+        if parsed.path == "/api/connectors/export":
+            self.write_json(build_connector_export())
+            return
         if parsed.path == "/api/ai/status":
             self.write_json(ai_status())
             return
@@ -651,6 +1196,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/login":
+            self.handle_login()
+            return
+        if not self.require_auth():
+            return
         if parsed.path == "/api/records":
             try:
                 payload = self.read_json()
@@ -731,9 +1281,18 @@ class Handler(BaseHTTPRequestHandler):
         data = file_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_cache_headers(file_path)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def send_cache_headers(self, file_path: Path) -> None:
+        if file_path.name == "reset.html":
+            self.send_header("Clear-Site-Data", '"cache"')
+        if file_path.suffix.lower() in {".html", ".css", ".js", ".webmanifest"} or file_path.name == "sw.js":
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
 
     def log_message(self, fmt: str, *args: object) -> None:
         print("%s - %s" % (self.address_string(), fmt % args))
@@ -741,8 +1300,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     connect().close()
-    server = ThreadingHTTPServer(("127.0.0.1", 8892), Handler)
-    print("Evidentia server running at http://127.0.0.1:8892")
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"Evidentia server running at http://{HOST}:{PORT}")
     server.serve_forever()
 
 

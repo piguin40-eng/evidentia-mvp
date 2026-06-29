@@ -1,28 +1,34 @@
 const STORAGE_KEY = "evidentia_records_v2";
-const HERO_VIDEO_VERSION = "20260617-roi-intel";
+const HERO_VIDEO_VERSION = "20260618-reference-video";
 const BRAND_WORD = 'EVID&#398;NTIA';
+const ALL_VIEWS = ["intake", "entities", "graph", "chat", "intelligence", "query", "pack", "connectors", "cases", "consent", "storage"];
+const VECTOR_CLUSTERS = [
+  { name: "Conocimiento", color: "#f0de40", cx: 0.58, cy: -0.12, cz: 0.18 },
+  { name: "Casos clinicos", color: "#56d4ff", cx: -0.34, cy: 0.22, cz: -0.18 },
+  { name: "Pacientes", color: "#ff7a58", cx: 0.16, cy: 0.42, cz: 0.28 },
+  { name: "Datos", color: "#70ffaf", cx: 0.04, cy: -0.48, cz: -0.22 }
+];
+const VECTOR_POINTS = buildVectorPoints();
 
 const entityRules = [
   { type: "discipline", label: "Ortodoncia", pattern: /ortodoncia|alineador|bracket|oclusion|oclusión|maloclusion|maloclusión/i },
   { type: "discipline", label: "Rehabilitacion", pattern: /rehabilitacion|rehabilitación|protesis|prótesis|implante|implantologia|implantología/i },
   { type: "discipline", label: "Estetica dental", pattern: /estetica|estética|sonrisa|carilla|veneer|mockup|mocap/i },
   { type: "discipline", label: "Periodoncia", pattern: /periodoncia|encia|encía|periodontal|gingival/i },
-  { type: "asset", label: "Fotografias", pattern: /foto|fotografia|fotografía|imagen|polarizada/i },
-  { type: "asset", label: "Video", pattern: /video|vídeo|grabacion|grabación/i },
-  { type: "asset", label: "PDF o documento", pattern: /pdf|documento|informe|consentimiento/i },
-  { type: "asset", label: "Escaneo o archivo 3D", pattern: /stl|scan|escaneo|intraoral|cbct|dicom/i },
   { type: "knowledge", label: "Nota de conocimiento", pattern: /nota|transcripcion|transcripción|decision|decisión|criterio|observacion|observación/i },
   { type: "knowledge", label: "Protocolo o aprendizaje", pattern: /protocolo|aprendizaje|leccion|lección|recordar|conocimiento/i },
   { type: "measurement", label: "CIELAB", pattern: /cielab|l\*|a\*|b\*|delta e|de00/i },
   { type: "measurement", label: "Medicion", pattern: /medicion|medición|medida|espesor|grosor|\d+(?:[.,]\d+)?\s*mm/i },
   { type: "outcome", label: "Resultado o seguimiento", pattern: /resultado|exito|éxito|fracaso|estable|seguimiento|dolor|problema|revision|revisión/i },
-  { type: "evidence", label: "Evidencia asociada", pattern: /evidencia|radiografia|radiografía|scan|pdf|documento|foto|video/i }
+  { type: "pattern", label: "Patron odontologico", pattern: /patron|patrón|recurrencia|repetido|similar|similares|tendencia/i },
+  { type: "clinical_focus", label: "Seguimiento oclusal", pattern: /oclusal|oclusion|oclusión|mordida|contactos|guia anterior|guía anterior|desoclusion|desoclusión/i }
 ];
 
 const state = {
   records: loadRecords(),
   activeRecordId: null,
   activeView: "intake",
+  activeEntityKey: null,
   apiOnline: false,
   ragStats: null,
   aiProvider: null,
@@ -87,7 +93,7 @@ async function bootstrap() {
   await loadAiProvider();
   if (state.records[0]) state.activeRecordId = state.records[0].id;
   const hashView = window.location.hash.replace("#", "");
-  if (hashView && ["intake", "entities", "graph", "chat", "intelligence", "query", "pack", "cases", "consent", "storage"].includes(hashView)) {
+  if (hashView && ALL_VIEWS.includes(hashView)) {
     state.activeView = hashView;
   }
   render();
@@ -96,6 +102,7 @@ async function bootstrap() {
 
 function setView(view, clearSearch = true) {
   state.activeView = view;
+  if (view !== "entities") state.activeEntityKey = null;
   if (window.location.hash !== "#" + view) history.replaceState(null, "", "#" + view);
   if (clearSearch && view !== "query") el.search.value = "";
   document.querySelectorAll(".rail-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
@@ -138,10 +145,10 @@ async function loadAiProvider() {
     const response = await fetch("/api/ai/status", { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error("AI offline");
     state.aiProvider = await response.json();
-    setAiState("working", "IA activa");
+    setAiState(state.aiProvider.active ? "working" : "idle", aiStatusLabel());
   } catch {
     state.aiProvider = null;
-    setAiState("working", "IA activa");
+    setAiState("idle", aiStatusLabel());
   }
 }
 
@@ -153,18 +160,32 @@ async function persistRecord(record) {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(record)
     });
-    if (!response.ok) throw new Error("API offline");
+    if (!response.ok) {
+      let detail = "API offline";
+      try {
+        const errorPayload = await response.json();
+        detail = errorPayload.error || detail;
+      } catch {}
+      throw new Error(detail);
+    }
     const payload = await response.json();
     state.apiOnline = true;
     state.agentLog.unshift("Registro guardado en SQLite: " + record.patientCode);
+    showToast("Registro guardado e indexado.");
     return payload.record || record;
-  } catch {
+  } catch (error) {
     state.apiOnline = false;
-    state.agentLog.unshift("Registro guardado en fallback local: " + record.patientCode);
+    state.agentLog.unshift("Registro guardado en fallback local: " + record.patientCode + " · " + error.message);
+    showToast("Guardado solo en este navegador. Servidor: " + error.message);
     return record;
   } finally {
-    setAiState("working", "IA activa");
+    setAiState(state.aiProvider && state.aiProvider.active ? "working" : "idle", aiStatusLabel());
   }
+}
+
+function aiStatusLabel() {
+  if (state.aiProvider && state.aiProvider.active) return "IA activa";
+  return "Mirror local";
 }
 
 function setAiState(stateName, label) {
@@ -196,8 +217,8 @@ function render() {
   el.body.dataset.case = active ? active.id : "";
   el.caseName.textContent = active ? active.patientCode : "Sin caso activo";
   el.traceCount.textContent = totalEvidence();
-  const ragLabel = state.ragStats && state.ragStats.backend === "chroma" ? " · Chroma " + state.ragStats.chunks + " chunks" : "";
-  el.storageStatus.textContent = (state.apiOnline ? "SQLite activo" : "Modo local") + ragLabel;
+  const ragLabel = state.ragStats && state.ragStats.backend === "chroma" ? " · " + state.ragStats.chunks + " fragmentos" : "";
+  el.storageStatus.textContent = (state.apiOnline ? "Datos activos" : "Modo local") + ragLabel;
   renderContext(active);
   renderWork();
 }
@@ -229,6 +250,7 @@ function renderWork() {
     intelligence: renderIntelligence,
     query: renderQuery,
     pack: renderPack,
+    connectors: renderConnectors,
     cases: renderCases,
     consent: renderConsent,
     storage: renderStorage
@@ -261,13 +283,42 @@ function bindViewEvents() {
   document.querySelectorAll("[data-set-view]").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.setView));
   });
-  const focusNotes = document.querySelector("[data-focus-notes]");
-  if (focusNotes) {
-    focusNotes.addEventListener("click", () => {
-      const notes = document.querySelector("#notes");
-      if (notes) notes.focus();
+  document.querySelectorAll("[data-open-entity]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeEntityKey = button.dataset.openEntity;
+      render();
+      const detail = document.querySelector(".entity-detail:not(.empty)");
+      if (detail) detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
-  }
+  });
+  document.querySelectorAll("[data-entity-search]").forEach((button) => {
+    button.addEventListener("click", () => {
+      el.search.value = button.dataset.entitySearch;
+      setView("query", false);
+    });
+  });
+  document.querySelectorAll("[data-entity-chat]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const prompt = "Que conocimiento tengo conectado con " + button.dataset.entityChat + "?";
+      setView("chat");
+      requestAnimationFrame(() => {
+        const input = document.querySelector("#knowledgeChatInput");
+        if (input) {
+          input.value = prompt;
+          input.focus();
+        }
+      });
+    });
+  });
+  document.querySelectorAll("[data-focus-notes]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const notes = document.querySelector("#notes");
+      if (notes) {
+        notes.scrollIntoView({ behavior: "smooth", block: "center" });
+        notes.focus();
+      }
+    });
+  });
   document.querySelectorAll("[data-select-case]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeRecordId = button.dataset.selectCase;
@@ -276,12 +327,17 @@ function bindViewEvents() {
   });
   const consentInputs = document.querySelectorAll("[data-consent-input]");
   consentInputs.forEach((input) => input.addEventListener("input", updateConsentPreview));
-  const download = document.querySelector("#downloadConsent");
-  if (download) download.addEventListener("click", downloadConsentDocument);
+  document.querySelectorAll("[data-download-consent]").forEach((button) => {
+    button.addEventListener("click", downloadConsentDocument);
+  });
   const chatForm = document.querySelector("#knowledgeChatForm");
   if (chatForm) chatForm.addEventListener("submit", submitKnowledgeChat);
   const exportPack = document.querySelector("#exportPack");
   if (exportPack) exportPack.addEventListener("click", downloadPackDocument);
+  const exportKnowledge = document.querySelector("#exportKnowledgeBundle");
+  if (exportKnowledge) exportKnowledge.addEventListener("click", downloadKnowledgeBundle);
+  const copyEndpoint = document.querySelector("#copyConnectorEndpoint");
+  if (copyEndpoint) copyEndpoint.addEventListener("click", copyConnectorEndpoint);
   document.querySelectorAll("[data-chat-prompt]").forEach((button) => {
     button.addEventListener("click", () => {
       const input = document.querySelector("#knowledgeChatInput");
@@ -299,57 +355,187 @@ function bindViewEvents() {
 function renderIntake() {
   return '<section class="evidentia-home">' +
     '<article class="evidentia-hero">' +
-    '<div class="hero-copy"><span class="eyebrow">Base vectorial de conocimiento</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Tu conocimiento vectorizado. Tu inteligencia amplificada.</p><p class="hero-subclaim">De la memoria dispersa al criterio propio. Del contexto a la acci&oacute;n.</p>' +
-    '<div class="hero-actions"><button class="primary" data-focus-notes type="button">Guardar conocimiento</button><button class="secondary" data-set-view="chat" type="button">Hablar con el mapa</button><button class="secondary" data-jump-consent type="button">Permisos</button></div></div>' +
+    '<div class="hero-copy"><span class="eyebrow">Evidentia</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Guarda. Consulta. Decide.</p><p class="hero-subclaim">Todo el conocimiento del equipo en un sitio.</p>' +
+    '<div class="hero-actions"><button class="primary" data-focus-notes type="button">Nuevo registro</button><button class="secondary" data-set-view="graph" type="button">Ver mapa</button><button class="secondary" data-set-view="connectors" type="button">Agentes / Projects</button><button class="secondary" data-download-consent type="button">Consentimiento</button></div></div>' +
     '<div class="hero-visual" aria-label="Evidentia en funcionamiento">' +
-    '<video class="hero-video" autoplay muted loop playsinline disablepictureinpicture preload="auto" poster="./assets/evidentia/evidentia-hero-poster.jpg?v=' + HERO_VIDEO_VERSION + '"><source src="./assets/evidentia/evidentia-hero.mp4?v=' + HERO_VIDEO_VERSION + '" type="video/mp4"></video>' +
-    '<div class="hero-video-brand"><strong class="brand-word">' + BRAND_WORD + '</strong><span>Vector Knowledge Mirror</span></div>' +
-    '<div class="hero-video-metrics"><span>' + state.records.length + ' registros</span><span>' + (state.ragStats ? state.ragStats.chunks || 0 : 0) + ' vectores</span><span>' + totalEvidence() + ' fuentes</span></div>' +
+    '<video class="hero-video" autoplay muted loop playsinline disablepictureinpicture preload="metadata" poster="./assets/evidentia/evidentia-reference-hero-poster.jpg?v=' + HERO_VIDEO_VERSION + '"><source src="./assets/evidentia/evidentia-reference-hero.mp4?v=' + HERO_VIDEO_VERSION + '" type="video/mp4"></video>' +
+    '<canvas class="cube-canvas hero-cube-canvas" width="300" height="220" aria-hidden="true"></canvas>' +
+    '<div class="hero-video-brand"><strong class="brand-word">' + BRAND_WORD + '</strong><span>Knowledge OS</span></div>' +
+    '<div class="hero-video-metrics"><span>' + state.records.length + ' registros</span><span>' + totalEvidence() + ' archivos</span><span>listo</span></div>' +
     '</div></article>' +
-    '<div class="value-strip"><article><strong>Para personas, equipos y centros</strong><span>Profesionales, direcci&oacute;n, operaciones, docencia, colaboradores y equipos especializados.</span></article><article><strong>Conocimiento propio</strong><span>Casos, proyectos, protocolos, fotos, v&iacute;deos, PDF, decisiones, errores y aprendizajes.</span></article><article><strong>Contexto accionable</strong><span>Consulta lo guardado con fuentes, similitud, trazabilidad y criterio humano.</span></article></div>' +
+    '<div class="value-strip">' +
+    '<button class="value-card" data-focus-notes type="button"><strong>Registros</strong><span>Casos, proyectos, reuniones, clases y protocolos.</span></button>' +
+    '<button class="value-card" data-set-view="pack" type="button"><strong>Archivos</strong><span>Audio, v&iacute;deo, fotos, PDF y notas.</span></button>' +
+    '<button class="value-card" data-set-view="chat" type="button"><strong>Consulta</strong><span>Preguntas directas sobre lo guardado.</span></button>' +
+    '</div>' +
+    renderKnowledgeRoutingBand() +
+    '<section class="video-memory-band" aria-label="Evidentia Video Memory">' +
+    '<div><span class="eyebrow">Audio y v&iacute;deo</span><h2>Sube un archivo y preg&uacute;ntale despu&eacute;s.</h2><p>Notas de voz, clases, reuniones y v&iacute;deos propios.</p></div>' +
+    '<ol><li>Subir</li><li>Guardar</li><li>Consultar</li><li>Revisar fuente</li></ol>' +
+    '</section>' +
     '<section class="work-grid">' +
     '<article class="card intake-card">' +
-    '<div class="section-head"><div><span class="eyebrow">Ingesta inteligente</span><h1>Guardar conocimiento real</h1><p class="lead">Mete texto, audios transcritos, fotos, v&iacute;deos, PDF, protocolos o aprendizajes. Evidentia lo estructura, lo indexa y lo conecta.</p></div><button class="secondary" id="startDictation" type="button">Dictar</button></div>' +
+    '<div class="section-head"><div><span class="eyebrow">Nuevo registro</span><h1>Guardar</h1></div><button class="secondary" id="startDictation" type="button">Dictar</button></div>' +
     '<form id="caseForm">' +
     '<div class="field-row"><label>Area libre<select id="domain"><option>Conocimiento general del centro</option><option>Operacion / procesos</option><option>Equipo / formacion</option><option>Docencia / investigacion</option><option>Odontologia general</option><option>Ortodoncia</option><option>Estetica y rehabilitacion</option><option>Implantes</option><option>Periodoncia</option><option>Laboratorio</option><option>Otro conocimiento</option></select></label><label>Tipo de entrada<select id="recordType"><option>Registro de conocimiento</option><option>Transcripcion</option><option>Articulo de conocimiento</option><option>Caso de exito</option><option>Caso de no exito</option><option>Archivo de conocimiento</option><option>Nota de conocimiento</option><option>Protocolo</option><option>Seguimiento</option><option>Idea o aprendizaje</option></select></label></div>' +
     '<div class="field-row"><label>Persona, caso, proyecto o referencia<input id="patient" autocomplete="off" placeholder="Iniciales, numero de caso, proyecto o referencia interna"></label><label>Responsable<input id="operator" autocomplete="off" placeholder="Profesional, tecnico, responsable, direccion o equipo"></label></div>' +
-    '<label>Conocimiento libre<textarea id="notes" rows="11" placeholder="Pega una transcripcion, explica que se hizo, sube fotos o videos, resume el resultado, registra si fue exito o fracaso, guarda criterios del equipo, protocolos, decisiones y aprendizajes. Sin estructura obligatoria."></textarea></label>' +
-    '<div class="field-row"><label>Fotos, videos, PDF, TXT o archivos asociados<input id="files" type="file" multiple></label><label>Fecha<input id="captureDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label></div>' +
-    '<div class="actions"><button class="primary" type="submit">Guardar en el mapa</button><button class="secondary" id="loadSample" type="button">Caso ejemplo</button><button class="secondary" data-set-view="cases" type="button">Ver casos</button></div>' +
+    '<label>Nota<textarea id="notes" rows="11" placeholder="Escribe o pega aqui el contenido importante."></textarea></label>' +
+    '<div class="field-row"><label>Archivos<input id="files" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.html,.xml"><small class="field-hint">Audio y video quedan listos para consulta al guardar.</small></label><label>Fecha<input id="captureDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label></div>' +
+    '<div class="actions"><button class="primary" type="submit">Guardar</button><button class="secondary" id="loadSample" type="button">Usar plantilla</button><button class="secondary" data-set-view="cases" type="button">Ver registros</button></div>' +
     '</form></article>' +
-    '<article class="card pipeline-card"><canvas id="cube" width="330" height="300" aria-hidden="true"></canvas>' +
+    '<article class="card pipeline-card"><canvas class="cube-canvas pipeline-cube-canvas" width="330" height="300" aria-hidden="true"></canvas>' +
     renderPipelineSteps("intake") +
-    '<div class="trust-stack"><span>Sin ataduras</span><span>Fuente guardada</span><span>Conocimiento propio</span></div></article>' +
+    '<div class="trust-stack"><span>Guardado</span><span>Consultable</span><span>Revisable</span></div></article>' +
     '</section></section>';
+}
+
+function renderKnowledgeRoutingBand() {
+  const rag = state.ragStats || { chunks: 0, sqliteChunks: 0 };
+  const chunks = rag.chunks || rag.sqliteChunks || 0;
+  const recordCount = rag.records || state.records.length;
+  return '<section class="knowledge-routing-band" aria-label="Conexion del conocimiento RAG">' +
+    '<div class="routing-copy"><span class="eyebrow">RAG conectado</span><h2>El conocimiento no se queda en un chat: alimenta agentes, projects y decisiones.</h2><p>Evidentia convierte registros, pacientes, casos clinicos y datos en un bundle trazable. Ese bundle se entrega a agentes autorizados, Claude/ChatGPT Projects o automatizaciones internas con fuentes y permiso.</p></div>' +
+    '<div class="routing-flow">' +
+    routingNode("01", "Conocimiento", recordCount + " registros", "Notas, protocolos, decisiones y contexto del equipo.") +
+    routingNode("02", "Vector RAG", chunks + " fragmentos", "Busqueda semantica local con fuentes recuperables.") +
+    routingNode("03", "Agentes", "Pedro / Faki / Yolito", "Roles que consultan sin inventar y citan origen.") +
+    routingNode("04", "Projects", "Claude / ChatGPT", "Memoria exportable para trabajo por proyecto.") +
+    routingNode("05", "Control", "Consentimiento", "Permisos, limites y revision humana antes de uso externo.") +
+    '</div>' +
+    '<div class="actions"><button class="primary" data-set-view="connectors" type="button">Configurar conexion</button><button class="secondary" data-set-view="graph" type="button">Ver mapa RAG</button><button class="secondary" data-download-consent type="button">Descargar consentimiento</button></div>' +
+    '</section>';
+}
+
+function routingNode(step, title, valueText, detail) {
+  return '<article class="routing-node"><span>' + escapeHtml(step) + '</span><strong>' + escapeHtml(title) + '</strong><em>' + escapeHtml(valueText) + '</em><small>' + escapeHtml(detail) + '</small></article>';
 }
 
 function renderEntities() {
   const record = activeRecord();
   if (!record) return emptyPipeline("Selecciona un caso para ver entidades.");
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Extraccion</span><h1>Entidades detectadas</h1></div><span class="score">' + record.entities.length + ' entidades</span></div>' +
-    '<div class="entity-grid">' + record.entities.map((entity) => '<article class="entity-card"><span class="type">' + escapeHtml(entity.type) + '</span><strong>' + escapeHtml(entity.label) + '</strong><small>confianza ' + Math.round((entity.confidence || 0.7) * 100) + '%</small></article>').join("") + '</div></section>';
+  const entities = knowledgeEntities(record);
+  const activeEntity = activeEntityFor(record);
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Extra&iacute;do</span><h1>Entidades</h1></div><span class="score">' + entities.length + ' entidades · ' + (record.files || []).length + ' archivos</span></div>' +
+    '<div class="entity-grid">' + (entities.length ? entities.map((entity) => renderEntityCard(entity)).join("") : '<article class="empty-state"><strong>Sin entidades todav&iacute;a</strong><p>A&ntilde;ade una nota o archivo.</p></article>') + '</div>' +
+    renderEntityPanel(record, activeEntity) +
+    renderEvidencePanel(record) +
+    '</section>';
+}
+
+function renderEntityCard(entity) {
+  const key = entityKey(entity);
+  const active = state.activeEntityKey === key;
+  return '<button class="entity-card' + (active ? " active" : "") + '" data-open-entity="' + escapeHtml(key) + '" type="button" aria-pressed="' + (active ? "true" : "false") + '">' +
+    '<span class="type">' + escapeHtml(entity.type) + '</span><strong>' + escapeHtml(entity.label) + '</strong><small>confianza ' + Math.round((entity.confidence || 0.7) * 100) + '%</small></button>';
+}
+
+function activeEntityFor(record) {
+  const entities = knowledgeEntities(record);
+  if (!entities.length) return null;
+  return entities.find((entity) => entityKey(entity) === state.activeEntityKey) || null;
+}
+
+function knowledgeEntities(record) {
+  return (record.entities || []).filter((entity) => !["asset", "evidence"].includes(entity.type));
+}
+
+function entityKey(entity) {
+  return normalizeText(entity.type + "::" + entity.label).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function renderEntityPanel(record, entity) {
+  if (!entity) {
+    return '<article class="entity-detail empty"><strong>Toca una entidad para abrirla.</strong><p>Veras su relacion con el caso, evidencias asociadas y accesos directos al mapa, chat, busqueda o pack.</p></article>';
+  }
+  const files = filesForEntity(record, entity);
+  const fileHtml = files.length
+    ? files.map((file) => '<li><strong>' + escapeHtml(file.name || "Archivo") + '</strong><span>' + escapeHtml(file.type || "tipo no indicado") + ' · ' + formatBytes(file.size || 0) + '</span></li>').join("")
+    : '<li><strong>Sin archivo directo</strong><span>A&ntilde;ade evidencia si hace falta.</span></li>';
+  const relation = relationFor(entity.type);
+  return '<article class="entity-detail">' +
+    '<div><span class="eyebrow">Entidad abierta</span><h2>' + escapeHtml(entity.label) + '</h2><p>' + escapeHtml(record.patientCode) + ' -- ' + escapeHtml(relation) + ' -- ' + escapeHtml(entity.label) + '</p></div>' +
+    '<ul class="entity-files">' + fileHtml + '</ul>' +
+    '<div class="actions">' +
+    '<button class="secondary" data-set-view="graph" type="button">Ver en mapa</button>' +
+    '<button class="secondary" data-entity-search="' + escapeHtml(entity.label) + '" type="button">Buscar similares</button>' +
+    '<button class="secondary" data-entity-chat="' + escapeHtml(entity.label) + '" type="button">Preguntar</button>' +
+    '<button class="secondary" data-set-view="' + (files.length ? "pack" : "intake") + '" type="button">' + (files.length ? "Abrir pack" : "Anadir evidencia") + '</button>' +
+    '</div></article>';
+}
+
+function filesForEntity(record, entity) {
+  const label = normalizeText(entity.label);
+  const type = normalizeText(entity.type);
+  return (record.files || []).filter((file) => {
+    const name = normalizeText(file.name || "");
+    const mime = normalizeText(file.type || "");
+    if (type === "evidence") return true;
+    if (label.includes("foto")) return mime.includes("image") || /foto|image|jpg|jpeg|png|webp/.test(name);
+    if (label.includes("video")) return mime.includes("video") || /video|mp4|mov|webm/.test(name);
+    if (label.includes("pdf") || label.includes("documento")) return mime.includes("pdf") || /pdf|doc|documento|informe/.test(name);
+    if (label.includes("3d") || label.includes("escaneo")) return /stl|obj|ply|dicom|dcm|scan|escaneo|intraoral/.test(name + " " + mime);
+    return name.includes(label);
+  });
+}
+
+function evidenceKind(file) {
+  const name = normalizeText(file.name || "");
+  const mime = normalizeText(file.type || "");
+  if (mime.includes("image") || /jpg|jpeg|png|webp|tif|foto|imagen/.test(name)) return "Fotografia / imagen";
+  if (mime.includes("video") || /mp4|mov|webm|video/.test(name)) return "Video";
+  if (mime.includes("pdf") || /pdf/.test(name)) return "PDF / documento";
+  if (/stl|obj|ply|dicom|dcm|scan|escaneo|intraoral/.test(name + " " + mime)) return "3D / escaneo";
+  return "Archivo asociado";
+}
+
+function renderEvidencePanel(record) {
+  const files = record.files || [];
+  const rows = files.length
+    ? files.map((file) => '<li><strong>' + escapeHtml(evidenceKind(file)) + '</strong><span>' + escapeHtml(file.name || "Archivo") + ' · ' + escapeHtml(file.type || "tipo no indicado") + ' · ' + formatBytes(file.size || 0) + '</span></li>').join("")
+    : '<li><strong>Sin evidencias adjuntas</strong><span>Fotos, videos, JPG, PDF, STL y otros archivos se muestran aqui, separados de las entidades clinicas.</span></li>';
+  return '<article class="entity-detail"><div><span class="eyebrow">Archivos</span><h2>Material asociado</h2></div><ul class="entity-files">' + rows + '</ul></article>';
 }
 
 function renderGraph() {
   const record = activeRecord();
-  if (!record) return emptyPipeline("Selecciona un caso para ver el mapa.");
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Mapa de conocimiento</span><h1>Lo que Evidentia ha conectado</h1><p class="lead">No obliga al equipo a pensar en bases de datos. Solo muestra como queda conectado lo que ha guardado.</p></div><span class="score">' + record.graph.length + ' puntos</span></div>' +
-    '<div class="graph-canvas"><div class="graph-root">' + escapeHtml(record.patientCode) + '</div>' + record.graph.slice(1).map((node, index) => '<article class="graph-node node-' + escapeHtml(node.type) + '" style="--i:' + index + '"><strong>' + escapeHtml(node.label) + '</strong><span>' + escapeHtml(node.relation) + '</span></article>').join("") + '</div></section>';
+  if (!record) {
+    return '<section class="card global-graph-card"><div class="section-head"><div><span class="eyebrow">Mapa RAG</span><h1>Conocimiento conectado</h1><p class="lead">Vista global de como Evidentia conecta conocimiento, casos clinicos, pacientes y datos con agentes y projects autorizados.</p></div><span class="score">' + state.records.length + ' registros</span></div>' +
+      '<div class="graph-canvas global-graph"><canvas class="cube-canvas graph-vector-canvas" width="760" height="420" aria-hidden="true"></canvas><div class="graph-root">RAG</div>' +
+      '<article class="graph-node node-knowledge"><strong>Conocimiento</strong><span>protocolos · decisiones · aprendizaje</span></article>' +
+      '<article class="graph-node node-evidence"><strong>Casos clinicos</strong><span>fuentes recuperables</span></article>' +
+      '<article class="graph-node node-outcome"><strong>Pacientes</strong><span>datos separados y seudonimizados</span></article>' +
+      '<article class="graph-node node-measurement"><strong>Datos</strong><span>archivos · transcripciones · chunks</span></article>' +
+      '<article class="graph-node node-agent"><strong>Agentes</strong><span>Pedro · Faki · Yolito · otros roles</span></article>' +
+      '<article class="graph-node node-project"><strong>Projects</strong><span>Claude / ChatGPT con bundle trazable</span></article>' +
+      '</div>' + renderKnowledgeRoutingBand() + '</section>';
+  }
+  const graphNodes = graphDisplayNodes(record);
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Mapa</span><h1>Conexiones</h1></div><span class="score">' + graphNodes.length + ' puntos</span></div>' +
+    '<div class="graph-canvas"><canvas class="cube-canvas graph-vector-canvas" width="760" height="420" aria-hidden="true"></canvas><div class="graph-root">' + escapeHtml(record.patientCode) + '</div>' + graphNodes.map((node, index) => '<article class="graph-node node-' + escapeHtml(node.type) + '" style="--i:' + index + '"><strong>' + escapeHtml(node.label) + '</strong><span>' + escapeHtml(node.relation) + '</span></article>').join("") + '</div></section>';
+}
+
+function graphDisplayNodes(record) {
+  return (record.graph || []).slice(1).filter((node) => {
+    if (node.type === "asset") return false;
+    if (node.type === "evidence" && normalizeText(node.label || "") === "evidencia asociada") return false;
+    return true;
+  });
 }
 
 function renderQuery() {
   const query = el.search.value.trim().toLowerCase();
   const matches = query ? state.records.filter((record) => recordHaystack(record).includes(query)) : state.records.slice(0, 8);
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Busqueda vectorial</span><h1>Pregunta sobre todo lo guardado</h1><p class="lead">Usa la barra superior para buscar por caso, area, resultado, archivo, protocolo o criterio.</p></div><span class="score">' + matches.length + ' resultados</span></div>' +
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Buscar</span><h1>Resultados</h1></div><span class="score">' + matches.length + ' resultados</span></div>' +
     '<div class="result-list">' + (matches.length ? matches.map(resultCard).join("") : '<div class="empty-state"><strong>Sin coincidencias claras</strong><p>Prueba con palabras usadas al guardar el caso o registra nuevo conocimiento.</p><button class="secondary" data-set-view="intake" type="button">Guardar conocimiento</button></div>') + '</div></section>';
 }
 
 function renderChat() {
+  const localPanel = renderLocalFirstPanel();
   return '<section class="card chat-shell">' +
-    '<div class="section-head"><div><span class="eyebrow">Chat con el mapa</span><h1>Habla con tu conocimiento guardado</h1><p class="lead">Pregunta en lenguaje normal. Evidentia busca en tus casos, proyectos, notas, archivos y entidades, y responde con fuentes.</p></div><span class="score">' + state.records.length + ' registros</span></div>' +
+    '<div class="section-head"><div><span class="eyebrow">Chat</span><h1>Pregunta</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
     '<div class="chat-layout">' +
     '<div class="chat-thread" id="knowledgeChatThread">' + state.chatMessages.map(chatBubble).join("") + '</div>' +
-    '<aside class="chat-prompts"><h3>Preguntas utiles</h3>' +
+    '<aside class="chat-prompts">' + localPanel + '<h3>Preguntas utiles</h3>' +
     chatPrompt("Que casos tuvieron buen resultado?") +
     chatPrompt("Que fracasos o problemas he registrado?") +
     chatPrompt("Que protocolos o procesos he usado?") +
@@ -362,6 +548,23 @@ function renderChat() {
     '</form></section>';
 }
 
+function renderLocalFirstPanel() {
+  const aiActive = Boolean(state.aiProvider && state.aiProvider.active);
+  const provider = state.aiProvider && state.aiProvider.provider ? state.aiProvider.provider : "sin proveedor externo";
+  const rag = state.ragStats || { chunks: 0, sqliteChunks: 0 };
+  const chunks = rag.chunks || rag.sqliteChunks || 0;
+  return '<div class="local-first-panel" aria-label="Control local">' +
+    '<span class="eyebrow">Control local</span>' +
+    '<strong>' + (aiActive ? "IA externa opt-in" : "Mirror local") + '</strong>' +
+    '<ul>' +
+    '<li><span>Datos</span><b>' + (state.apiOnline ? "SQLite local" : "Navegador local") + '</b></li>' +
+    '<li><span>RAG</span><b>' + chunks + ' fragmentos</b></li>' +
+    '<li><span>IA</span><b>' + escapeHtml(aiActive ? provider : "apagada") + '</b></li>' +
+    '</ul>' +
+    '<p>Recupera fuentes del nodo. No diagnostica, prescribe ni sustituye revision humana.</p>' +
+    '</div>';
+}
+
 function renderIntelligence() {
   const intel = intelligenceSnapshot();
   const contradictionHtml = intel.contradictions.length
@@ -369,23 +572,23 @@ function renderIntelligence() {
     : '<span class="chip ok">Sin contradicciones criticas detectadas todavia</span>';
   const expertHtml = intel.experts.length
     ? intel.experts.map((expert) => '<article class="case-card"><button type="button"><strong>' + escapeHtml(expert.name) + '</strong><span>Memoria de experto · ' + expert.records + ' registros</span><p>' + escapeHtml(expert.summary) + '</p><small>' + expert.files + ' fuentes · ' + expert.domains + ' areas</small></button></article>').join("")
-    : '<div class="empty-state"><strong>Sin memoria de experto suficiente</strong><p>Cuando un responsable acumule registros, Evidentia podra responder: que haria esta persona, que protocolo sigue y que criterios repite.</p></div>';
+    : '<div class="empty-state"><strong>Sin datos suficientes</strong><p>A&ntilde;ade m&aacute;s registros.</p></div>';
   const similarHtml = intel.similar.length
     ? intel.similar.map((item) => '<span class="chip ok">' + escapeHtml(item) + '</span>').join("")
     : '<span class="chip warn">Aun faltan registros comparables para similitud fuerte</span>';
 
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Inteligencia operativa</span><h1>ROI, expertos, riesgo y patrones</h1><p class="lead">Esto convierte Evidentia en algo vendible: no solo guarda conocimiento, detecta valor operativo y riesgo de perdida.</p></div><span class="score">' + intel.confidence + '</span></div>' +
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Intel</span><h1>Se&ntilde;ales</h1></div><span class="score">' + intel.confidence + '</span></div>' +
     '<div class="intel-grid">' +
-    intelligenceBox("Horas ahorradas", intel.hoursSaved + " h/mes", "Estimacion por busquedas manuales evitadas") +
-    intelligenceBox("Busquedas evitadas", intel.searchesAvoided, "Consultas recuperables desde el mapa") +
+    intelligenceBox("Tiempo recuperado", intel.hoursSaved + " h/mes", "Estimacion por revisar pacientes, proyectos y buscar patrones") +
+    intelligenceBox("Busquedas evitadas", intel.searchesAvoided, "Consultas recuperables desde casos, archivos y mapa") +
     intelligenceBox("Casos similares", intel.similarCount, "Coincidencias por area y entidades") +
-    intelligenceBox("Riesgo conocimiento", intel.riskLevel, intel.riskReason) +
+    intelligenceBox("Conocimiento disperso", intel.riskLevel, intel.riskReason) +
     '</div>' +
     '<div class="work-grid intelligence-work">' +
-    '<article class="card compact"><h3>Memoria de empleados / expertos</h3><p class="muted">Permite vender frases como: pregunta que haria Miguel Arroyo, Paula o cualquier experto interno segun su historial real.</p><div class="case-list">' + expertHtml + '</div></article>' +
-    '<article class="card compact"><h3>Contradicciones detectadas</h3><p class="muted">Busca protocolos incompatibles, tiempos distintos, criterios opuestos o cambios sin trazabilidad.</p><div class="actions">' + contradictionHtml + '</div><h3>Casos conectados</h3><div class="actions">' + similarHtml + '</div></article>' +
+    '<article class="card compact"><h3>Expertos</h3><div class="case-list">' + expertHtml + '</div></article>' +
+    '<article class="card compact"><h3>Contradicciones</h3><div class="actions">' + contradictionHtml + '</div><h3>Casos conectados</h3><div class="actions">' + similarHtml + '</div></article>' +
     '</div>' +
-    '<div class="value-strip intelligence-strip"><article><strong>Modo Preguntale al experto</strong><span>Proxima capa: responder desde la memoria de una persona concreta, citando registros y limites.</span></article><article><strong>Modo formacion</strong><span>Generar cursos, tests, evaluaciones y casos de entrenamiento desde el conocimiento indexado.</span></article><article><strong>Descubrimiento de patrones</strong><span>Detectar conclusiones que nadie escribio explicitamente, solo cuando haya evidencia repetida suficiente.</span></article></div>' +
+    '<div class="value-strip intelligence-strip"><article><strong>Expertos</strong><span>Criterio por persona.</span></article><article><strong>Formaci&oacute;n</strong><span>Tests y casos.</span></article><article><strong>Patrones</strong><span>Repeticiones detectadas.</span></article></div>' +
     '</section>';
 }
 
@@ -404,8 +607,42 @@ function renderPack() {
   return '<section class="card"><div class="section-head"><div><span class="eyebrow">Evidence-to-Outcome Pack</span><h1>Paquete operativo del caso</h1></div><button class="primary" id="exportPack" type="button">Exportar pack</button></div>' +
     '<div class="pack-grid">' + 
     metric("Caso", record.patientCode) + metric("Completitud", Math.max(20, 100 - missing.length * 22) + "%") + metric("Fuentes", record.files.length) + metric("Relaciones", record.graph.length) +
-    '</div><div class="card compact"><h3>Siguiente accion recomendada</h3><p>' + (missing[0] || "Caso suficientemente estructurado para consulta y revision profesional.") + '</p></div>' +
+    '</div><div class="card compact"><h3>Siguiente acci&oacute;n</h3><p>' + (missing[0] || "Listo para consulta y revisi&oacute;n.") + '</p></div>' +
     '<div class="card compact"><h3>Faltantes</h3>' + (missing.length ? missing.map((item) => '<span class="chip warn">' + escapeHtml(item) + '</span>').join("") : '<span class="chip ok">Sin faltantes criticos</span>') + '</div></section>';
+}
+
+function renderConnectors() {
+  const rag = state.ragStats || { chunks: 0, sqliteChunks: 0, backend: "local" };
+  const endpoint = location.origin + "/api/connectors/export";
+  const connectorCount = state.records.length ? "Listo" : "Sin datos";
+  return '<section class="card connectors-shell">' +
+    '<div class="section-head"><div><span class="eyebrow">Conectores de conocimiento</span><h1>RAG hacia agentes y Projects</h1><p class="lead">El mapa vectorial de Evidentia se exporta como conocimiento gobernado: registros, fuentes, chunks, permisos y trazabilidad para agentes, Claude Projects, ChatGPT Projects o automatizaciones internas.</p></div><span class="score">' + connectorCount + '</span></div>' +
+    '<div class="connector-bridge" aria-label="Flujo de conexion">' +
+    '<span>Registros</span><i></i><span>Chunks RAG</span><i></i><span>Knowledge bundle</span><i></i><span>Agentes</span><i></i><span>Projects</span><i></i><span>Revision humana</span>' +
+    '</div>' +
+    '<div class="pack-grid connector-metrics">' +
+    metric("Registros", String(state.records.length)) +
+    metric("Fragmentos RAG", String(rag.chunks || rag.sqliteChunks || 0)) +
+    metric("Destino v1", "Agente / proyecto") +
+    metric("Formato", "JSON trazable") +
+    '</div>' +
+    '<div class="connector-grid">' +
+    connectorCard("Paquete para agente", "Descarga un JSON con registros, fuentes, entidades, chunks y reglas para que Pedro, Faki, Yolito u otro agente trabajen con memoria verificable.", '<button class="primary" id="exportKnowledgeBundle" type="button">Descargar knowledge bundle</button>') +
+    connectorCard("Claude / ChatGPT Projects", "Carga el bundle en un Project para que el contexto no sea una conversacion suelta: queda organizado por fuentes, casos y limites.", '<button class="secondary" id="copyConnectorEndpoint" type="button">Copiar endpoint local</button><code id="connectorEndpoint">' + escapeHtml(endpoint) + '</code>') +
+    connectorCard("Gobierno de datos", "Antes de conectar datos sensibles: definir destino, responsable, base juridica, consentimiento, minimizacion y si hay transferencia externa.", '<button class="secondary" data-set-view="consent" type="button">Preparar consentimiento</button><span class="chip warn">No enviar fuera sin permiso</span>') +
+    '</div>' +
+    '<article class="entity-detail connector-plan"><div><span class="eyebrow">Plan de conexion</span><h2>Evolucion del conector</h2></div>' +
+    '<ul class="entity-files">' +
+    '<li><strong>v1 local</strong><span>Export JSON y endpoint local para agente/proyecto controlado por el cliente.</span></li>' +
+    '<li><strong>v2 permisos</strong><span>API keys, responsable por conexion, logs de acceso, consentimiento y alcance por workspace.</span></li>' +
+    '<li><strong>v3 orquestacion</strong><span>Pedro revisa construccion, Faki web/conversion, Yolito conocimiento dental y otros agentes consumen solo lo autorizado.</span></li>' +
+    '<li><strong>v4 marketplace</strong><span>Conectores certificados para ChatGPT Projects, Claude Projects, Make, n8n, Notion, Drive y CRMs.</span></li>' +
+    '</ul></article>' +
+    '</section>';
+}
+
+function connectorCard(title, text, actionHtml) {
+  return '<article class="connector-card"><h3>' + escapeHtml(title) + '</h3><p>' + escapeHtml(text) + '</p><div class="actions">' + actionHtml + '</div></article>';
 }
 
 function renderCases() {
@@ -414,16 +651,18 @@ function renderCases() {
 }
 
 function renderConsent() {
-  return '<section class="card consent-hero"><div class="section-head"><div><span class="eyebrow">Permiso descargable</span><h1>Autorizacion para datos sensibles</h1><p class="lead">Documento base para poder guardar fotos, videos, audios, PDF y datos del caso cuando el conocimiento incluya informacion identificable o sensible.</p></div><button class="primary" id="downloadConsent" type="button">Descargar documento firmable</button></div>' +
-    '<div class="consent-status-panel"><strong>Estado recomendado:</strong><span class="chip warn">No iniciar tratamiento IA con datos identificables sin consentimiento firmado</span><span class="chip ok">Permite trabajo con texto, fotos, videos, PDF y transcripciones del caso</span></div>' +
+  return '<section class="card consent-hero"><div class="section-head"><div><span class="eyebrow">Proteccion de datos</span><h1>Consentimiento del paciente</h1><p class="lead">Plantilla para autorizar tratamiento de datos, imagen, audio, video, RAG y agentes. En produccion debe revisarla el asesor RGPD del centro.</p></div><button class="primary" data-download-consent type="button">Descargar consentimiento</button></div>' +
+    '<div class="consent-status-panel"><strong>Estado recomendado:</strong><span class="chip warn">No tratar datos sanitarios identificables sin base juridica y documento firmado</span><span class="chip ok">Incluye imagen, audio, video, PDF, transcripcion, RAG y agentes</span><span class="chip warn">IA externa solo con autorizacion expresa</span></div>' +
     '<div class="consent-layout"><div class="consent-form">' +
-    consentInput("Centro, empresa o equipo", "consentClinic", "Nombre del centro responsable") +
-    consentInput("Responsable", "consentDoctor", "Profesional, tecnico, direccion o responsable") +
+    consentInput("Centro responsable del tratamiento", "consentClinic", "Nombre fiscal/comercial del centro") +
+    consentInput("Responsable / delegado o contacto RGPD", "consentDoctor", "Profesional, direccion, email o contacto") +
     consentInput("Persona interesada", "consentPatient", "Nombre y apellidos si aplica") +
     consentInput("DNI / identificador", "consentPatientId", "Documento o ID interno") +
     consentInput("Caso, proyecto o area", "consentCase", "Ej: caso, proyecto, area, proceso o expediente") +
     '<label>Fecha<input data-consent-input id="consentDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label>' +
-    '<label>Finalidad<textarea data-consent-input id="consentPurpose" rows="5">Guardar, ordenar, vectorizar y consultar el conocimiento generado durante el caso, proyecto o actividad profesional, incluyendo archivos y notas, para que el equipo pueda recuperar informacion y aprender de su propia experiencia bajo supervision humana.</textarea></label>' +
+    '<label>Finalidad<textarea data-consent-input id="consentPurpose" rows="5">Documentar el caso, ordenar archivos clinicos y administrativos, transcribir audio/video autorizado, indexar el contenido en una base vectorial privada y permitir consultas RAG con fuentes para apoyar la revision humana del equipo profesional.</textarea></label>' +
+    '<label class="checkbox-line"><input data-consent-input id="consentSensitiveHealth" type="checkbox" checked> Autoriza el tratamiento de datos de salud, imagen intra/extraoral, documentos y archivos necesarios para el caso.</label>' +
+    '<label class="checkbox-line"><input data-consent-input id="consentAgentsProjects" type="checkbox"> Autoriza conectar el conocimiento seudonimizado a agentes o Projects internos del centro bajo control del responsable.</label>' +
     '<label class="checkbox-line"><input data-consent-input id="consentExternalAi" type="checkbox"> Autoriza proveedores/modelos externos de IA si fueran necesarios y bajo medidas de seguridad aplicables.</label>' +
     '<label class="checkbox-line"><input data-consent-input id="consentAnonymizedLearning" type="checkbox"> Autoriza uso anonimizado/agregado no identificable para mejorar plantillas, flujos y calidad del sistema.</label>' +
     '<p class="legal-note">Plantilla operativa. Validar con asesor legal/RGPD antes de uso real.</p></div><article class="consent-preview" id="consentPreview"></article></div></section>';
@@ -431,21 +670,26 @@ function renderConsent() {
 
 function renderStorage() {
   const rag = state.ragStats || { backend: "sin conexion", chunks: 0, sqliteChunks: 0, path: "data/rag/chroma/" };
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Mapa tecnico explicable</span><h1>Dónde se guarda cada cosa</h1><p class="lead">Arquitectura local-first para MVP. En cloud se conserva la misma separacion logica, cambiando SQLite/Chroma local por servicios gestionados.</p></div><span class="score">MVP local</span></div>' +
-    '<div class="pack-grid">' + metric("Vector DB", rag.backend) + metric("Chunks Chroma", String(rag.chunks || 0)) + metric("Chunks SQLite", String(rag.sqliteChunks || 0)) + '</div>' +
-    '<div class="storage-map">' +
-    storageRow("Aplicacion", "/Users/piguin/.openclaw/workspace/evidentia-mvp", "Frontend, backend local y documentos del producto.") +
-    storageRow("Base estructurada", "data/evidentia.sqlite", "Casos, entidades, relaciones, evidencias y busqueda FTS. Es SQLite dentro de la propia app local.") +
-    storageRow("Archivos del caso", "data/uploads/", "Carpeta local donde se guardan fotos, videos, PDF, STL, CBCT/DICOM u otros adjuntos subidos desde la app.") +
-    storageRow("RAG vectorial local", rag.path || "data/rag/chroma/", "ChromaDB persistente. Cada registro guardado indexa notas y texto extraido de archivos en chunks semanticos dentro del ordenador/servidor del cliente.") +
-    storageRow("Exportaciones", "data/exports/", "Consentimientos, packs de evidencia, informes y documentos descargables.") +
-    storageRow("Instalacion cliente", "Evidentia Local Node", "Opcion recomendada para equipos con conocimiento sensible: se instala en el ordenador/servidor del cliente y el RAG vive ahi dentro.") +
-    storageRow("Aprendizaje global", "Opt-in anonimizado", "Evidentia no se queda con casos privados por defecto. Solo aprende con patrones anonimizados o contenido que el cliente autorice compartir.") +
-    storageRow("Cloud v1", "Postgres + pgvector + object storage", "En produccion: base por organizacion, archivos en S3/R2, embeddings en pgvector o Qdrant, auditoria y permisos.") +
+  const aiActive = Boolean(state.aiProvider && state.aiProvider.active);
+  const provider = aiActive && state.aiProvider.provider ? state.aiProvider.provider : "sin proveedor externo activo";
+  const chunks = rag.chunks || rag.sqliteChunks || 0;
+  const recordCount = rag.records || state.records.length;
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Datos</span><h1>Estado</h1></div><span class="score">Local</span></div>' +
+    '<div class="pack-grid">' + metric("Estado", state.apiOnline ? "Activo" : "Local") + metric("Fragmentos", String(chunks)) + metric("Registros", String(recordCount)) + metric("IA externa", aiActive ? "Opt-in" : "Apagada") + '</div>' +
+    '<div class="local-proof-band">' +
+    '<span class="chip ok">Nodo privado local-first</span>' +
+    '<span class="chip warn">IA externa solo con permiso/API del cliente</span>' +
+    '<span class="chip warn">Apoyo documental: no diagnostico ni decision automatica</span>' +
+    '<p>Proveedor IA actual: ' + escapeHtml(provider) + '. Antes de conectar datos sensibles fuera del nodo hay que documentar destino, responsable, base juridica y consentimiento.</p>' +
     '</div>' +
-    '<div class="card compact"><h3>Modelo recomendado</h3><p>Para la primera version vendible: instalacion local o hibrida. El cliente compra Evidentia, se instala un nodo local en su ordenador/servidor, los datos y el RAG quedan dentro de su entorno, y solo se conectan servicios externos si el cliente lo autoriza.</p></div>' +
-    '<div class="card compact"><h3>Aprendizaje entre clientes</h3><p>No debemos apropiarnos silenciosamente del conocimiento de cada cliente. La capa global solo debe usar estadistica anonima, mejoras tecnicas y bibliotecas compartidas con permiso explicito.</p></div>' +
-    '<div class="card compact"><h3>Explicacion corta para venderlo</h3><p>En el MVP, todo vive dentro de la carpeta de la aplicacion en este Mac: SQLite para datos estructurados y una carpeta RAG preparada para Chroma local. En version cloud, el mismo modelo pasa a Postgres/pgvector y almacenamiento seguro por cliente u organizacion.</p></div></section>';
+    '<div class="storage-map">' +
+    storageRow("Registros", "data/evidentia.sqlite", "Casos, proyectos y notas guardadas.") +
+    storageRow("Archivos", "data/uploads/", "Fotos, videos, audio, PDF y documentos.") +
+    storageRow("Transcripciones", "data/derived/transcripts/", "Texto recuperable de audios y videos.") +
+    storageRow("Vector RAG", rag.path || "data/rag/chroma/", "Fragmentos semanticos guardados en el nodo.") +
+    storageRow("Packs", "data/exports/", "Documentos descargables.") +
+    '</div>' +
+    '</section>';
 }
 
 function storageRow(title, path, detail) {
@@ -468,7 +712,9 @@ async function saveCaseFromForm(event) {
 }
 
 async function buildRecordFromForm() {
-  const notes = value("#notes");
+  const explicitNotes = value("#notes");
+  const fileNotes = await textFromSelectedFiles();
+  const notes = [explicitNotes, fileNotes].filter(Boolean).join("\n\n---\n\n");
   const patient = value("#patient");
   const files = await uploadSelectedFiles();
   const entities = extractEntities(notes);
@@ -487,6 +733,30 @@ async function buildRecordFromForm() {
     entities,
     graph: buildGraph(patientCode, entities, files)
   };
+}
+
+async function textFromSelectedFiles() {
+  const input = document.querySelector("#files");
+  const selected = Array.from(input.files || []);
+  const readable = selected.filter((file) => isReadableTextFile(file) && file.size <= 2_000_000);
+  if (!readable.length) return "";
+  const chunks = [];
+  for (const file of readable) {
+    try {
+      const text = (await file.text()).trim();
+      if (text) chunks.push("Contenido extraido de " + file.name + ":\n" + text);
+    } catch {
+      state.agentLog.unshift("No se pudo leer el texto local de " + file.name);
+    }
+  }
+  if (chunks.length) state.agentLog.unshift("TXT/markdown incorporado a la nota: " + chunks.length);
+  return chunks.join("\n\n");
+}
+
+function isReadableTextFile(file) {
+  const name = (file.name || "").toLowerCase();
+  const type = (file.type || "").toLowerCase();
+  return type.startsWith("text/") || /\.(txt|md|csv|json|html|htm|xml)$/i.test(name);
 }
 
 async function uploadSelectedFiles() {
@@ -535,7 +805,7 @@ function dedupe(entities) {
 
 function buildGraph(patientCode, entities, files) {
   const graph = [{ type: "identity", label: patientCode, relation: "caso_anonimizado" }];
-  entities.forEach((entity) => graph.push({ type: entity.type, label: entity.label, relation: relationFor(entity.type) }));
+  entities.filter((entity) => !["asset", "evidence"].includes(entity.type)).forEach((entity) => graph.push({ type: entity.type, label: entity.label, relation: relationFor(entity.type) }));
   files.forEach((file) => graph.push({ type: "evidence", label: file.name, relation: "evidencia_asociada" }));
   return graph;
 }
@@ -564,8 +834,8 @@ function anonymize(raw) {
 }
 
 function loadSampleRecord() {
-  const notes = "Registro demo de conocimiento: el equipo documenta una decision importante, adjunta fotografias, video, PDF de planificacion y notas internas. Se registra criterio aplicado, resultado esperado, dudas pendientes y aprendizaje para reutilizarlo en futuras consultas internas.";
-  const patientCode = "PAT-DEMO";
+  const notes = "Plantilla de conocimiento: el equipo documenta una decision importante, adjunta fotografias, video, PDF de planificacion y notas internas. Se registra criterio aplicado, resultado esperado, dudas pendientes y aprendizaje para reutilizarlo en futuras consultas.";
+  const patientCode = "REF-PLANTILLA";
   const entities = extractEntities(notes);
   const record = {
     id: crypto.randomUUID(),
@@ -575,18 +845,18 @@ function loadSampleRecord() {
     recordType: "Caso completo",
     patientCode,
     hasPrivateIdentity: true,
-    operator: "Demo Evidentia",
+    operator: "Equipo",
     notes,
     files: [
-      { name: "fotografias-intraorales-demo.jpg", type: "image/jpeg", size: 240000 },
-      { name: "video-mordida-demo.mp4", type: "video/mp4", size: 1240000 },
-      { name: "planificacion-demo.pdf", type: "application/pdf", size: 380000 }
+      { name: "fotografias-referencia.jpg", type: "image/jpeg", size: 240000 },
+      { name: "video-referencia.mp4", type: "video/mp4", size: 1240000 },
+      { name: "planificacion-referencia.pdf", type: "application/pdf", size: 380000 }
     ],
     entities,
     graph: buildGraph(patientCode, entities, [
-      { name: "fotografias-intraorales-demo.jpg" },
-      { name: "video-mordida-demo.mp4" },
-      { name: "planificacion-demo.pdf" }
+      { name: "fotografias-referencia.jpg" },
+      { name: "video-referencia.mp4" },
+      { name: "planificacion-referencia.pdf" }
     ])
   };
   state.records.unshift(record);
@@ -606,8 +876,8 @@ function totalEvidence() {
 function intelligenceSnapshot() {
   const records = state.records;
   const evidence = totalEvidence();
-  const searchesAvoided = Math.max(0, records.length * 4 + evidence * 2);
-  const hoursSaved = Math.max(0, Math.round((searchesAvoided * 7) / 60));
+  const searchesAvoided = Math.max(0, records.length * 6 + evidence * 2);
+  const hoursSaved = records.length ? Math.max(10, Math.round((searchesAvoided * 10) / 60)) : 0;
   const similar = similarCaseSignals(records);
   const contradictions = contradictionSignals(records);
   const experts = expertMemories(records);
@@ -616,10 +886,10 @@ function intelligenceSnapshot() {
   const riskScore = lonelyExperts + weakEvidence + (contradictions.length ? 2 : 0);
   const riskLevel = riskScore >= 4 ? "ALTO" : riskScore >= 2 ? "MEDIO" : "BAJO";
   const riskReason = riskLevel === "ALTO"
-    ? "Conocimiento poco redundante o con contradicciones"
+    ? "Demasiado criterio en memoria personal o sin fuentes cruzadas"
     : riskLevel === "MEDIO"
-      ? "Faltan mas fuentes o validacion cruzada"
-      : "Base pequena pero trazable";
+      ? "Faltan fuentes, responsables o seguimiento cruzado"
+      : "Base pequena, pero trazable y consultable";
   const confidence = records.length >= 10 ? "confianza media" : records.length >= 3 ? "confianza inicial" : "datos insuficientes";
   return {
     searchesAvoided,
@@ -644,7 +914,7 @@ function expertMemories(records) {
   return Array.from(groups.entries())
     .map(([name, items]) => {
       const domains = Array.from(new Set(items.map((item) => item.domain).filter(Boolean)));
-      const concepts = Array.from(new Set(items.flatMap((item) => item.entities.map((entity) => entity.label)))).slice(0, 4);
+      const concepts = Array.from(new Set(items.flatMap((item) => knowledgeEntities(item).map((entity) => entity.label)))).slice(0, 4);
       return {
         name,
         records: items.length,
@@ -665,9 +935,9 @@ function similarCaseSignals(records) {
     for (let b = a + 1; b < records.length; b += 1) {
       const left = records[a];
       const right = records[b];
-      const sharedEntities = left.entities
+      const sharedEntities = knowledgeEntities(left)
         .map((entity) => entity.label)
-        .filter((label) => right.entities.some((entity) => entity.label === label));
+        .filter((label) => knowledgeEntities(right).some((entity) => entity.label === label));
       if (left.domain === right.domain || sharedEntities.length >= 2) {
         signals.push(left.patientCode + " parecido a " + right.patientCode);
       }
@@ -718,7 +988,7 @@ function recordHaystack(record) {
 }
 
 function resultCard(record) {
-  return '<article class="case-card"><button data-select-case="' + record.id + '" type="button"><strong>' + escapeHtml(record.patientCode) + '</strong><span>' + escapeHtml(record.recordType) + ' · ' + escapeHtml(record.domain) + '</span><p>' + escapeHtml(record.notes.slice(0, 220)) + (record.notes.length > 220 ? "..." : "") + '</p><small>' + record.entities.length + ' entidades · ' + record.files.length + ' evidencias</small></button></article>';
+  return '<article class="case-card"><button data-select-case="' + record.id + '" type="button"><strong>' + escapeHtml(record.patientCode) + '</strong><span>' + escapeHtml(record.recordType) + ' · ' + escapeHtml(record.domain) + '</span><p>' + escapeHtml(record.notes.slice(0, 220)) + (record.notes.length > 220 ? "..." : "") + '</p><small>' + knowledgeEntities(record).length + ' entidades · ' + record.files.length + ' evidencias</small></button></article>';
 }
 
 function chatPrompt(text) {
@@ -849,16 +1119,17 @@ function metric(label, valueText) {
 }
 
 function emptyPipeline(text) {
-  return '<section class="empty-pipeline card"><canvas id="cube" width="330" height="300"></canvas>' + renderPipelineSteps(state.activeView) + '<div class="empty-state elevated"><strong>' + escapeHtml(text) + '</strong><p>Guarda un registro o abre un caso existente para activar esta vista.</p><div class="actions"><button class="primary" data-set-view="intake" type="button">Guardar conocimiento</button><button class="secondary" data-set-view="cases" type="button">Ver casos</button></div></div></section>';
+  return '<section class="empty-pipeline card"><canvas class="cube-canvas pipeline-cube-canvas" width="330" height="300"></canvas>' + renderPipelineSteps(state.activeView) + '<div class="empty-state elevated"><strong>' + escapeHtml(text) + '</strong><p>Guarda un registro o abre un caso existente para activar esta vista.</p><div class="actions"><button class="primary" data-set-view="intake" type="button">Guardar conocimiento</button><button class="secondary" data-set-view="cases" type="button">Ver casos</button></div></div></section>';
 }
 
 function renderPipelineSteps(activeView) {
   const steps = [
     { label: "Captura", view: "intake" },
-    { label: "Vectoriza", view: "entities" },
+    { label: "Extrae", view: "entities" },
     { label: "Mapa", view: "graph" },
     { label: "Busca", view: "query" },
-    { label: "Aprende", view: "chat" }
+    { label: "Aprende", view: "chat" },
+    { label: "Conecta", view: "connectors" }
   ];
   return '<nav class="pipeline-steps" aria-label="Flujo de conocimiento">' + steps.map((step) => {
     const active = step.view === activeView;
@@ -891,6 +1162,8 @@ function consentValues() {
     caseName: valueOr("consentCase", "Caso, proyecto o expediente"),
     date: valueOr("consentDate", new Date().toISOString().slice(0, 10)),
     purpose: valueOr("consentPurpose", "Organizar informacion y conocimiento profesional con apoyo de inteligencia artificial agentica bajo supervision humana."),
+    sensitiveHealth: !document.querySelector("#consentSensitiveHealth") || document.querySelector("#consentSensitiveHealth").checked,
+    agentsProjects: Boolean(document.querySelector("#consentAgentsProjects") && document.querySelector("#consentAgentsProjects").checked),
     externalAi: Boolean(document.querySelector("#consentExternalAi") && document.querySelector("#consentExternalAi").checked),
     anonymizedLearning: Boolean(document.querySelector("#consentAnonymizedLearning") && document.querySelector("#consentAnonymizedLearning").checked)
   };
@@ -902,24 +1175,26 @@ function valueOr(id, fallback) {
 }
 
 function consentBodyHtml(values) {
-  return '<h1>Autorizacion para tratamiento de datos y conocimiento con sistemas de inteligencia artificial agentica</h1>' +
+  return '<h1>Consentimiento informado para tratamiento de datos, imagen y conocimiento con Evidentia</h1>' +
     '<p><strong>Centro responsable:</strong> ' + escapeHtml(values.clinic) + '</p>' +
-    '<p><strong>Responsable:</strong> ' + escapeHtml(values.doctor) + '</p>' +
+    '<p><strong>Responsable / contacto RGPD:</strong> ' + escapeHtml(values.doctor) + '</p>' +
     '<p><strong>Persona interesada:</strong> ' + escapeHtml(values.patient) + '</p>' +
     '<p><strong>DNI / identificador:</strong> ' + escapeHtml(values.patientId) + '</p>' +
     '<p><strong>Caso, proyecto o expediente:</strong> ' + escapeHtml(values.caseName) + '</p>' +
     '<p><strong>Fecha:</strong> ' + escapeHtml(values.date) + '</p>' +
-    '<h2>1. Finalidad</h2><p>' + escapeHtml(values.purpose) + '</p>' +
-    '<h2>2. Datos tratados</h2><p>Podran tratarse datos identificativos, datos de contacto si fueran necesarios, fotografias, videos, escaneos, PDF, audios, transcripciones, notas, mediciones, planes, resultados, documentos administrativos y conocimiento aportado por el profesional o equipo relacionado con el caso, proyecto o expediente.</p>' +
-    '<h2>3. Uso de inteligencia artificial</h2><p>El centro podra utilizar sistemas de IA, incluidos agentes, para transcribir, ordenar, vectorizar, buscar y conectar informacion guardada por el equipo profesional.</p><p>Estos sistemas no sustituyen el criterio humano ni toman decisiones autonomas. Toda decision profesional, economica, sanitaria o tecnica debera ser revisada y validada por personas cualificadas.</p>' +
-    '<h2>4. Lugar de tratamiento y almacenamiento</h2><p>Cuando Evidentia funcione en modo local, los datos, archivos y RAG podran almacenarse en el ordenador, NAS o servidor del centro. Si se activa modalidad cloud o hibrida, el centro debera informar de los proveedores, ubicacion, medidas de seguridad y condiciones aplicables.</p>' +
-    '<h2>5. Proveedores y modelos externos</h2><p>Uso de proveedores/modelos externos de IA: <strong>' + (values.externalAi ? "autorizado" : "no autorizado salvo nueva autorizacion expresa") + '</strong>.</p>' +
-    '<h2>6. Aprendizaje anonimizado</h2><p>Uso anonimizado o agregado para mejorar plantillas, flujos y calidad del sistema: <strong>' + (values.anonymizedLearning ? "autorizado" : "no autorizado") + '</strong>. Este uso no debera incluir datos identificables de personas, equipos, clientes o casos.</p>' +
-    '<h2>7. Riesgos y limitaciones</h2><p>La persona interesada entiende que la IA puede cometer errores, generar transcripciones incompletas o clasificar informacion de forma imperfecta. Por ello, el sistema se utiliza como apoyo para guardar y recuperar conocimiento, no como sustituto del criterio profesional humano.</p>' +
-    '<h2>8. Seguridad y confidencialidad</h2><p>El centro aplicara medidas razonables de minimizacion, control de acceso, trazabilidad, seudonimizacion o anonimizacion cuando sea posible, separando identidad/datos sensibles y conocimiento reutilizable.</p>' +
-    '<h2>9. Conservacion</h2><p>Los datos se conservaran durante el tiempo necesario para la finalidad asistencial, documental, legal, tecnica o de mejora interna indicada por el centro, salvo solicitud valida de supresion o limitacion cuando proceda.</p>' +
-    '<h2>10. Derechos</h2><p>La persona interesada podra solicitar informacion, acceso, rectificacion, limitacion, oposicion o supresion en los terminos previstos por la normativa aplicable. Tambien podra retirar esta autorizacion cuando proceda, sin afectar al tratamiento realizado previamente de forma licita.</p>' +
-    '<h2>11. Consentimiento</h2><p>Declaro haber recibido informacion suficiente, haber podido formular preguntas y autorizar el tratamiento descrito en este documento.</p>' +
+    '<h2>1. Responsable y marco normativo</h2><p>El responsable del tratamiento sera el centro indicado. Esta plantilla se redacta para un uso compatible con RGPD y LOPDGDD, y debe adaptarse por el responsable antes de su uso real.</p>' +
+    '<h2>2. Finalidad</h2><p>' + escapeHtml(values.purpose) + '</p>' +
+    '<h2>3. Base juridica orientativa</h2><p>La base juridica podra incluir consentimiento de la persona interesada, prestacion de servicios sanitarios/asistenciales, gestion documental, interes legitimo interno cuando proceda y tratamiento de categorias especiales de datos bajo las excepciones aplicables del articulo 9 RGPD. El centro debe confirmar la base juridica exacta para su caso.</p>' +
+    '<h2>4. Datos tratados</h2><p>Podran tratarse datos identificativos, datos de contacto si fueran necesarios, datos de salud, fotografias intraorales y extraorales, videos, audio, escaneos, PDF, transcripciones, notas, mediciones, planes, resultados, consentimientos, facturas o documentos administrativos vinculados al caso.</p><p>Tratamiento de datos de salud e imagen: <strong>' + (values.sensitiveHealth ? "autorizado para la finalidad indicada" : "no autorizado") + '</strong>.</p>' +
+    '<h2>5. Evidentia, RAG y agentes</h2><p>Evidentia puede guardar informacion, separar identidad y conocimiento reutilizable, generar transcripciones, crear fragmentos semanticos, indexarlos en una base vectorial privada y recuperar respuestas con fuentes. Tambien puede conectar conocimiento seudonimizado a agentes o Projects internos si el responsable lo permite.</p><p>Conexion a agentes o Projects internos: <strong>' + (values.agentsProjects ? "autorizada" : "no autorizada salvo nueva autorizacion") + '</strong>.</p>' +
+    '<h2>6. Proveedores y modelos externos</h2><p>Uso de proveedores/modelos externos de IA: <strong>' + (values.externalAi ? "autorizado bajo medidas de seguridad, contrato y configuracion aplicables" : "no autorizado salvo nueva autorizacion expresa") + '</strong>. Si se usan proveedores externos, el centro debera informar de proveedor, finalidad, ubicacion/region, retencion, seguridad y posible transferencia internacional.</p>' +
+    '<h2>7. Aprendizaje anonimizado</h2><p>Uso anonimizado o agregado para mejorar plantillas, flujos y calidad del sistema: <strong>' + (values.anonymizedLearning ? "autorizado" : "no autorizado") + '</strong>. Este uso no debera incluir datos identificables de pacientes, profesionales, centros, equipos, clientes o casos.</p>' +
+    '<h2>8. Limitaciones de la IA</h2><p>La persona interesada entiende que la IA puede cometer errores, generar transcripciones incompletas, clasificar informacion de forma imperfecta o recuperar fuentes no concluyentes. Evidentia se usa como apoyo documental y de recuperacion de conocimiento; no sustituye diagnostico, criterio clinico, criterio legal ni decisiones profesionales humanas.</p>' +
+    '<h2>9. Seguridad, minimizacion y acceso</h2><p>El centro aplicara medidas razonables de minimizacion, control de acceso, trazabilidad, copias de seguridad, seudonimizacion o anonimizacion cuando sea posible, separando identidad/datos sensibles y conocimiento reutilizable. Solo accederan personas autorizadas por el responsable.</p>' +
+    '<h2>10. Lugar de almacenamiento</h2><p>Cuando Evidentia funcione en modo local, los datos, archivos y RAG podran almacenarse en el ordenador, NAS o servidor del centro. Si se activa modalidad cloud o hibrida, el centro debera informar de proveedores, ubicacion, medidas de seguridad y condiciones aplicables.</p>' +
+    '<h2>11. Conservacion</h2><p>Los datos se conservaran durante el tiempo necesario para la finalidad asistencial, documental, legal, tecnica o de mejora interna indicada por el centro, salvo solicitud valida de supresion o limitacion cuando proceda.</p>' +
+    '<h2>12. Derechos</h2><p>La persona interesada podra solicitar informacion, acceso, rectificacion, limitacion, oposicion, portabilidad o supresion en los terminos previstos por la normativa aplicable. Tambien podra retirar esta autorizacion cuando proceda, sin afectar al tratamiento realizado previamente de forma licita.</p>' +
+    '<h2>13. Consentimiento</h2><p>Declaro haber recibido informacion suficiente, haber podido formular preguntas y autorizar el tratamiento descrito en este documento para la finalidad indicada.</p>' +
     '<div class="signature-grid"><div><span>Firma de la persona interesada</span></div><div><span>Firma del responsable/centro</span></div></div>' +
     '<p class="fine-print">Plantilla operativa. Validar con asesor legal/RGPD antes de uso real.</p>';
 }
@@ -927,6 +1202,70 @@ function consentBodyHtml(values) {
 function updateConsentPreview() {
   const preview = document.querySelector("#consentPreview");
   if (preview) preview.innerHTML = consentBodyHtml(consentValues());
+}
+
+async function downloadKnowledgeBundle() {
+  let bundle = null;
+  try {
+    const response = await fetch("/api/connectors/export", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("export endpoint offline");
+    bundle = await response.json();
+    state.agentLog.unshift("Knowledge bundle descargado desde API local");
+  } catch {
+    bundle = buildLocalKnowledgeBundle();
+    state.agentLog.unshift("Knowledge bundle generado desde navegador");
+  }
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "evidentia-knowledge-bundle-" + new Date().toISOString().slice(0, 10) + ".json";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  showToast("Knowledge bundle listo para agente o proyecto.");
+}
+
+function buildLocalKnowledgeBundle() {
+  return {
+    schema: "evidentia.knowledge_bundle.v1",
+    generatedAt: new Date().toISOString(),
+    source: "browser-local",
+    policy: {
+      allowedUse: "Conectar conocimiento validado a agentes, proyectos o automatizaciones bajo permiso del propietario.",
+      humanReviewRequired: true,
+      medicalOrLegalDecision: false
+    },
+    stats: {
+      records: state.records.length,
+      files: totalEvidence(),
+      ragBackend: state.ragStats ? state.ragStats.backend : "browser"
+    },
+    records: state.records.map((record) => ({
+      id: record.id,
+      date: record.date,
+      domain: record.domain,
+      recordType: record.recordType,
+      reference: record.patientCode,
+      operator: record.operator,
+      notes: record.notes,
+      entities: knowledgeEntities(record),
+      files: record.files || [],
+      graph: record.graph || []
+    })),
+    chunks: []
+  };
+}
+
+async function copyConnectorEndpoint() {
+  const endpoint = location.origin + "/api/connectors/export";
+  try {
+    await navigator.clipboard.writeText(endpoint);
+    showToast("Endpoint copiado.");
+  } catch {
+    showToast(endpoint);
+  }
 }
 
 function downloadConsentDocument() {
@@ -951,8 +1290,9 @@ function downloadPackDocument() {
     showToast("Selecciona un caso antes de exportar.");
     return;
   }
-  const entityRows = record.entities.length
-    ? record.entities.map((entity) => '<li><strong>' + escapeHtml(entity.type) + ':</strong> ' + escapeHtml(entity.label) + '</li>').join("")
+  const packEntities = knowledgeEntities(record);
+  const entityRows = packEntities.length
+    ? packEntities.map((entity) => '<li><strong>' + escapeHtml(entity.type) + ':</strong> ' + escapeHtml(entity.label) + '</li>').join("")
     : '<li>Sin entidades detectadas.</li>';
   const relationRows = record.graph.length
     ? record.graph.map((item) => '<li>' + escapeHtml(item.from) + ' -- ' + escapeHtml(item.relation) + ' -- ' + escapeHtml(item.to) + '</li>').join("")
@@ -982,42 +1322,158 @@ function downloadPackDocument() {
   showToast("Pack exportado: " + record.patientCode);
 }
 
+function buildVectorPoints() {
+  const points = [];
+  VECTOR_CLUSTERS.forEach((cluster, clusterIndex) => {
+    for (let i = 0; i < 18; i += 1) {
+      const seed = (clusterIndex + 1) * 37 + i * 11;
+      const angle = seed * 0.77;
+      const radius = 0.11 + ((seed % 7) * 0.018);
+      points.push({
+        cluster: clusterIndex,
+        x: cluster.cx + Math.cos(angle) * radius + Math.sin(seed) * 0.035,
+        y: cluster.cy + Math.sin(angle * 1.13) * radius + Math.cos(seed * 0.3) * 0.035,
+        z: cluster.cz + Math.cos(angle * 0.7) * radius
+      });
+    }
+  });
+  return points;
+}
+
 function drawCube(time = 0) {
-  const canvas = document.querySelector("#cube");
-  if (canvas) {
+  document.querySelectorAll(".cube-canvas").forEach((canvas) => {
     const ctx = canvas.getContext("2d");
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     const cx = w / 2;
     const cy = h / 2;
-    const size = 76;
-    const a = time * 0.001;
-    const points = [
-      [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-      [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]
-    ].map(([x, y, z]) => {
-      const rx = x * Math.cos(a) - z * Math.sin(a);
-      const rz = x * Math.sin(a) + z * Math.cos(a);
-      const scale = size / (2.8 + rz);
-      return [cx + rx * scale, cy + y * scale, rz];
+    const isHero = canvas.classList.contains("hero-cube-canvas");
+    if (isHero) {
+      drawHeroCube(ctx, w, h, time);
+      return;
+    }
+    const angle = time * 0.00042;
+    const tilt = Math.sin(time * 0.00025) * 0.22;
+    const radius = Math.min(w, h) * (isHero ? 0.42 : 0.40);
+    const projected = VECTOR_POINTS.map((point) => {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const rx = point.x * cos - point.z * sin;
+      const rz = point.x * sin + point.z * cos;
+      const ry = point.y * Math.cos(tilt) - rz * Math.sin(tilt);
+      const depth = 1.35 + rz * 0.62;
+      return {
+        x: cx + (rx * radius) / depth,
+        y: cy + (ry * radius) / depth,
+        z: rz,
+        cluster: point.cluster,
+        depth
+      };
     });
-    ctx.strokeStyle = "rgba(122,162,255,.85)";
-    ctx.lineWidth = 1.5;
-    [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([i,j]) => {
-      ctx.beginPath();
-      ctx.moveTo(points[i][0], points[i][1]);
-      ctx.lineTo(points[j][0], points[j][1]);
-      ctx.stroke();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.lineWidth = isHero ? 0.85 : 1.05;
+    projected.forEach((point, index) => {
+      for (let i = index + 1; i < projected.length; i += 1) {
+        const other = projected[i];
+        if (other.cluster !== point.cluster) continue;
+        const dist = Math.hypot(point.x - other.x, point.y - other.y);
+        const max = isHero ? 42 : 56;
+        if (dist > max) continue;
+        const alpha = (1 - dist / max) * (isHero ? 0.42 : 0.55);
+        ctx.strokeStyle = hexToRgba(VECTOR_CLUSTERS[point.cluster].color, alpha);
+        ctx.beginPath();
+        ctx.moveTo(point.x, point.y);
+        ctx.lineTo(other.x, other.y);
+        ctx.stroke();
+      }
     });
-    ctx.fillStyle = "rgba(94,224,201,.95)";
-    points.forEach((p) => {
-      ctx.beginPath();
-      ctx.arc(p[0], p[1], 3, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
+
+    const sweep = (time * 0.00018) % 1;
+    ctx.strokeStyle = "rgba(150,242,202,.38)";
+    ctx.lineWidth = isHero ? 1.2 : 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.98, sweep * Math.PI * 2, sweep * Math.PI * 2 + Math.PI * 0.64);
+    ctx.stroke();
+
+    projected
+      .sort((a, b) => a.depth - b.depth)
+      .forEach((point) => {
+        const color = VECTOR_CLUSTERS[point.cluster].color;
+        const dot = Math.max(isHero ? 1.8 : 2.3, (isHero ? 3.8 : 4.5) / point.depth);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = isHero ? 8 : 10;
+        ctx.fillStyle = hexToRgba(color, Math.min(0.95, 0.58 + point.z * 0.3));
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, dot, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+    if (!isHero) {
+      ctx.shadowBlur = 0;
+      ctx.font = "700 11px Inter, system-ui, sans-serif";
+      VECTOR_CLUSTERS.forEach((cluster, index) => {
+        const clusterPoints = projected.filter((point) => point.cluster === index);
+        const x = clusterPoints.reduce((sum, point) => sum + point.x, 0) / clusterPoints.length;
+        const y = clusterPoints.reduce((sum, point) => sum + point.y, 0) / clusterPoints.length;
+        ctx.fillStyle = hexToRgba(cluster.color, 0.84);
+        ctx.fillText(cluster.name, x + 7, y - 7);
+      });
+    }
+    ctx.restore();
+  });
   requestAnimationFrame(drawCube);
+}
+
+function drawHeroCube(ctx, w, h, time) {
+  const cx = w / 2;
+  const cy = h / 2;
+  const size = 86;
+  const a = time * 0.001;
+  const points = [
+    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]
+  ].map(([x, y, z]) => {
+    const rx = x * Math.cos(a) - z * Math.sin(a);
+    const rz = x * Math.sin(a) + z * Math.cos(a);
+    const scale = size / (2.8 + rz);
+    return [cx + rx * scale, cy + y * scale, rz];
+  });
+  ctx.strokeStyle = "rgba(150,242,202,.92)";
+  ctx.shadowColor = "rgba(94,224,201,.72)";
+  ctx.shadowBlur = 12;
+  ctx.lineWidth = 1.55;
+  [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([i, j]) => {
+    ctx.beginPath();
+    ctx.moveTo(points[i][0], points[i][1]);
+    ctx.lineTo(points[j][0], points[j][1]);
+    ctx.stroke();
+  });
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = "rgba(248,251,255,.96)";
+  points.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(point[0], point[1], 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+}
+
+function hexToRgba(hex, alpha) {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "tamano no indicado";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
 function escapeHtml(text) {

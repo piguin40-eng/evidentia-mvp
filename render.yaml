@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: evidentia
+    runtime: python
+    plan: starter
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: EVIDENTIA_HOST=0.0.0.0 EVIDENTIA_PORT=$PORT EVIDENTIA_AUTH_MODE=cookie bash scripts/render_start.sh
+    healthCheckPath: /api/healthz
+    disk:
+      name: evidentia-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5
+    envVars:
+      - key: EVIDENTIA_BASIC_AUTH_USER
+        value: miguel
+      - key: EVIDENTIA_BASIC_AUTH_PASSWORD
+        sync: false
+      - key: EVIDENTIA_AUTH_MODE
+        value: cookie
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_API_KEY
+        sync: false

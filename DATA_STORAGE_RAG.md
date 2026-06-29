@@ -13,8 +13,11 @@ En la version actual, Evidentia funciona como producto local-first dentro de est
 | App | `index.html`, `app.js`, `styles.css`, `server.py` | Interfaz y API local |
 | Datos estructurados | `data/evidentia.sqlite` | Casos, entidades, relaciones, evidencias y busqueda FTS |
 | Fotos, videos, PDF, STL, DICOM | `data/uploads/` | Carpeta local para binarios del caso |
+| Audio derivado | `data/derived/audio/` | Audio WAV normalizado extraido de audio/video para transcripcion |
+| Transcripciones | `data/derived/transcripts/` | JSON/TXT generados por Whisper local con timestamps |
 | RAG vectorial | `data/rag/chroma/` | ChromaDB persistente local |
 | Exportaciones | `data/exports/` | Consentimientos, packs e informes descargables |
+| Conectores | `/api/connectors/export` | Bundle JSON trazable para agentes, proyectos y automatizaciones autorizadas |
 | Auditoria | `data/audit/` | Logs de acciones, accesos y procesamiento |
 
 ## Respuesta clara para explicar al cliente
@@ -31,10 +34,12 @@ En el MVP, los datos viven dentro del ordenador/servidor donde se instala Eviden
 - Backend: ChromaDB persistente.
 - Coleccion: `evidentia_knowledge`.
 - Tabla espejo de chunks: `rag_chunks` en `data/evidentia.sqlite`.
+- Export v1: `GET /api/connectors/export` devuelve registros, evidencias y chunks con politica de uso y revision humana obligatoria.
 - Cada registro guardado indexa notas del caso y texto extraido de TXT, Markdown, HTML, CSV, JSON y PDF.
 - Imagenes: se analizan localmente con dimensiones, orientacion, luminosidad, color medio, calidez, variacion cromatica y detalle/bordes.
 - Videos: se extraen frames con ffmpeg, se analizan visualmente y se indexan como texto en Chroma.
-- OCR, transcripcion de audio y vision dental semantica quedan como siguiente capa.
+- Audio/video: se transcribe localmente con Whisper CLI cuando esta disponible. ffmpeg extrae audio normalizado, Whisper genera JSON/TXT con timestamps y el texto se indexa en el RAG del cliente. Especificacion: VIDEO_TRANSCRIPTION_RAG.md.
+- OCR y vision dental semantica quedan como capas posteriores.
 
 ## Version cloud
 

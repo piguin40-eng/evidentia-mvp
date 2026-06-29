@@ -1,0 +1,5 @@
+chromadb
+numpy
+onnxruntime
+pypdf
+pillow

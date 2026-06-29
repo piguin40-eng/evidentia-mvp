@@ -8,10 +8,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Evidentia" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./icon.svg" />
-    <link rel="stylesheet" href="./styles.css?v=20260617-roi-intel" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260628-mobile-app" />
+    <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260628-mobile-app" />
+    <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260628-mobile-app" />
+    <link rel="stylesheet" href="./styles.css?v=20260629-rag-refresh" />
   </head>
   <body data-case="" data-consent="pending">
     <header class="app-topbar">
@@ -21,7 +22,8 @@
         <input id="globalSearch" type="search" placeholder="Buscar casos, fotos, videos, PDF, notas, criterios..." />
         <kbd>⌘K</kbd>
       </div>
-      <a class="install-app site-link" href="./website.html">Web</a>
+      <a class="install-app site-link" href="./reset.html?v=20260629-rag-refresh">Actualizar</a>
+      <a class="install-app site-link" href="./website.html?v=20260622-good-web-restore">Web</a>
       <button class="install-app" id="installApp" type="button">Instalar app</button>
       <div class="ai-status" id="aiStatus" data-state="idle"><span class="pulse"></span><span>IA en reposo</span></div>
     </header>
@@ -34,6 +36,7 @@
       <button class="rail-item" data-view="intelligence" type="button">Intel</button>
       <button class="rail-item" data-view="query" type="button">Buscar</button>
       <button class="rail-item" data-view="pack" type="button">Pack</button>
+      <button class="rail-item" data-view="connectors" type="button">Conectar</button>
       <button class="rail-item" data-view="cases" type="button">Casos</button>
       <button class="rail-item" data-view="consent" type="button">Permiso</button>
       <button class="rail-item" data-view="storage" type="button">Datos</button>
@@ -60,11 +63,11 @@
     </footer>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260617-roi-intel"></script>
+    <script src="./app.js?v=20260629-rag-refresh"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260617-roi-intel")
+          navigator.serviceWorker.register("./sw.js?v=20260629-rag-refresh")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });
