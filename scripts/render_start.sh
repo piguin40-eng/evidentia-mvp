@@ -6,7 +6,7 @@ cd "${ROOT}"
 
 mkdir -p data
 
-if [[ ! -f data/evidentia.sqlite && -f deploy/evidentia-data-seed.tar.gz ]]; then
+if [[ "${EVIDENTIA_RESTORE_SEED:-false}" == "true" && ! -f data/evidentia.sqlite && -f deploy/evidentia-data-seed.tar.gz ]]; then
   echo "Restoring Evidentia seed data into persistent disk..."
   tar -xzf deploy/evidentia-data-seed.tar.gz
 fi
