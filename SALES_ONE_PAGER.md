@@ -31,7 +31,7 @@ Dental es el primer vertical de piloto porque el dolor de perdida de contexto es
 - Instalacion local de Evidentia Local Node.
 - App en navegador sobre datos locales.
 - SQLite local para registros.
-- Chroma local para busqueda semantica/RAG.
+- Indice vectorial compacto local para busqueda semantica/RAG, con espejo SQLite de chunks y fuentes.
 - Configuracion opcional de la IA propia del cliente: OpenAI, Claude, Gemini, proveedor compatible o modo RAG local sin IA externa.
 - Upload real de archivos.
 - Ingesta de texto, PDF/TXT/MD/CSV/JSON/HTML, imagen, audio y video propio o autorizado.
@@ -144,7 +144,7 @@ Porque el valor no es comprar software terminado: es construir una memoria propi
 
 ## Proxima Accion Comercial
 
-Elegir dos doctores candidatos, instalar dos nodos separados, cargar 3-5 registros ficticios o anonimizados por doctor, activar su IA solo si tienen API propia, ejecutar la demo de 10 minutos y cerrar prueba pagada con mantenimiento mensual.
+Elegir dos candidatos, completar PEDRO_MICRODEMO_CANDIDATE_PACK_20260702.md, pasar MICRODEMO_ACCEPTANCE_GATE.md, pedir una microdemo de 10 minutos con aprobacion explicita de Miguel, instalar dos nodos separados, cargar 3-5 registros ficticios o anonimizados por candidato, activar su IA solo si tienen API propia, ejecutar la demo y cerrar prueba pagada con mantenimiento mensual.
 
 ## Cierre Seguro
 

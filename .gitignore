@@ -22,3 +22,10 @@ __pycache__/
 .idea/
 .vscode/
 
+# Local QA/browser artifacts and generated delivery bundles
+.chrome-qa*/
+.playwright-cli/
+qa/
+logs/
+backups/
+*.log

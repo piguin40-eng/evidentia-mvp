@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
+DATA_DIR = Path(os.getenv("EVIDENTIA_DATA_DIR", str(ROOT / "data"))).expanduser().resolve()
 DB_PATH = DATA_DIR / "evidentia.sqlite"
 UPLOAD_DIR = DATA_DIR / "uploads"
 RAG_DIR = Path(os.getenv("EVIDENTIA_RAG_DIR", str(DATA_DIR / "rag" / "chroma"))).expanduser()
@@ -42,6 +42,7 @@ EXPORT_DIR = DATA_DIR / "exports"
 CHROMA_COLLECTION = "evidentia_knowledge"
 ENABLE_CHROMA = os.getenv("EVIDENTIA_ENABLE_CHROMA", "").strip().lower() in {"1", "true", "yes"}
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+OPENAI_CHAT_ENABLED = os.getenv("EVIDENTIA_ENABLE_OPENAI_CHAT", "").strip().lower() in {"1", "true", "yes"}
 HOST = os.getenv("EVIDENTIA_HOST", "0.0.0.0")
 PORT = int(os.getenv("EVIDENTIA_PORT", "8892"))
 BASIC_AUTH_USER = os.getenv("EVIDENTIA_BASIC_AUTH_USER", "").strip()
@@ -50,6 +51,48 @@ BASIC_AUTH_ENABLED = bool(BASIC_AUTH_USER and BASIC_AUTH_PASSWORD)
 AUTH_MODE = os.getenv("EVIDENTIA_AUTH_MODE", "basic").strip().lower()
 SESSION_COOKIE = "evidentia_session"
 SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode("utf-8")).hexdigest() if BASIC_AUTH_ENABLED else ""
+PUBLIC_STATIC_ROOTS = ("assets/", "qa/")
+PUBLIC_STATIC_FILES = {
+    "app.js",
+    "styles.css",
+    "sw.js",
+    "manifest.webmanifest",
+    "icon.svg",
+    "reset.html",
+    "website.html",
+    "website.css",
+    "PILOT_LAUNCH_PLAN.md",
+}
+
+
+def normalize_auth_user(value: str) -> str:
+    return (value or "").strip().casefold()
+
+
+def normalize_auth_secret(value: str) -> str:
+    return re.sub(r"[\s\-_.]+", "", value or "").casefold()
+
+
+def valid_credentials(username: str, password: str) -> bool:
+    if not BASIC_AUTH_ENABLED:
+        return True
+    expected_user = normalize_auth_user(BASIC_AUTH_USER)
+    incoming_user = normalize_auth_user(username)
+    if not hmac.compare_digest(incoming_user, expected_user):
+        return False
+
+    incoming_secret = normalize_auth_secret(password)
+    expected_secret = normalize_auth_secret(BASIC_AUTH_PASSWORD)
+    if hmac.compare_digest(incoming_secret, expected_secret):
+        return True
+
+    # Convenience for the private local demo: if the configured secret embeds
+    # the user name as a prefix, allow typing just the remaining code.
+    if expected_secret.startswith(expected_user):
+        short_secret = expected_secret[len(expected_user):]
+        if short_secret and hmac.compare_digest(incoming_secret, short_secret):
+            return True
+    return False
 
 
 ENTITY_RULES = [
@@ -500,16 +543,16 @@ def ai_status() -> dict:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     return {
         "provider": "openai",
-        "active": bool(api_key),
-        "model": OPENAI_MODEL if api_key else None,
-        "mode": "openai" if api_key else "rag-local",
-        "message": "OpenAI activo" if api_key else "OpenAI no configurado: define OPENAI_API_KEY para activar sintesis IA",
+        "active": bool(api_key and OPENAI_CHAT_ENABLED),
+        "model": OPENAI_MODEL if api_key and OPENAI_CHAT_ENABLED else None,
+        "mode": "openai" if api_key and OPENAI_CHAT_ENABLED else "rag-local",
+        "message": "OpenAI activo" if api_key and OPENAI_CHAT_ENABLED else "Chat RAG local activo; sintesis externa desactivada por defecto",
     }
 
 
 def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key or not chunks:
+    if not OPENAI_CHAT_ENABLED or not api_key or not chunks:
         return None
 
     context = "\n\n".join(
@@ -523,8 +566,10 @@ def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
                 "role": "system",
                 "content": (
                     "Eres el asistente interno de Evidentia, una plataforma para crear el espejo vectorial del conocimiento de una persona, equipo, centro u organizacion. "
-                    "Responde solo con evidencia del contexto recuperado. No inventes datos, relaciones ni conclusiones. "
-                    "Si la evidencia es insuficiente, dilo. Cita las fuentes por numero."
+                    "Usa el contexto recuperado como memoria interna, pero responde como un chat natural: directo, breve y centrado solo en la pregunta. "
+                    "No pegues fragmentos largos del RAG ni conviertas la respuesta en una lista de chunks. "
+                    "No inventes datos, relaciones ni conclusiones. Si la evidencia es insuficiente, dilo con claridad. "
+                    "Menciona las fuentes solo de forma ligera cuando ayude a verificar la respuesta."
                 ),
             },
             {
@@ -548,7 +593,153 @@ def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
             data = json.loads(response.read().decode("utf-8"))
         return data["choices"][0]["message"]["content"].strip()
     except Exception as exc:
-        return "OpenAI configurado, pero la llamada fallo. Respuesta RAG local mantenida. Error: " + str(exc)
+        print(f"OpenAI synthesis unavailable; using local RAG answer: {exc}")
+        return None
+
+
+CHAT_STOP_WORDS = {
+    "sobre", "para", "como", "cuando", "donde", "desde", "hasta", "entre", "tengo", "tienes", "tiene",
+    "esta", "este", "esto", "esta", "esas", "esos", "algo", "todo", "todos", "cual", "cuales",
+    "que", "quien", "porque", "pregunta", "respuesta", "hacer", "dime", "explica", "buscar",
+    "guardado", "conocimiento", "documento", "documentos", "caso", "casos", "fuente", "fuentes",
+}
+
+
+def chat_terms(question: str) -> list[str]:
+    terms = []
+    for term in re.findall(r"[\wÀ-ÿ*.+-]+", question.lower(), flags=re.UNICODE):
+        clean = term.strip(".*+-_")
+        if len(clean) < 4 or clean in CHAT_STOP_WORDS:
+            continue
+        terms.append(clean)
+    return terms[:12]
+
+
+def split_relevant_sentences(text: str) -> list[str]:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if not cleaned:
+        return []
+    parts = re.split(r"(?<=[.!?])\s+|\s+-\s+|\n+", cleaned)
+    sentences = []
+    for part in parts:
+        sentence = part.strip(" -•\t")
+        if len(sentence) < 35:
+            continue
+        low = sentence.lower()
+        if "duplicate_content" in low or '"path":' in low or '"reason":' in low:
+            continue
+        if "source_path" in low or "copied_to" in low or "sha256" in low:
+            continue
+        if sentence.endswith("?") or sentence.endswith("¿"):
+            continue
+        sentence = clean_chat_sentence(sentence)
+        if sentence:
+            sentences.append(sentence[:520])
+    return sentences
+
+
+def clean_chat_sentence(sentence: str) -> str:
+    sentence = re.split(r"\s+[\[{]\s*['\"]?(?:source_path|path|reason|duplicate_of|copied_to|sha256)['\"]?\s*[:=]", sentence, maxsplit=1)[0]
+    sentence = re.sub(r"[{}\[\]]", " ", sentence)
+    sentence = re.sub(r"\*\*", "", sentence)
+    sentence = re.sub(r"\s+", " ", sentence).strip(" -:;,.")
+    sentence = re.sub(r"^(?:\d+[.)]?\s*)+", "", sentence).strip()
+    sentence = sentence.replace("DEVO", "debo").replace("TINCIONEN", "tinciones").replace("DESPUES", "despues")
+    if len(sentence) < 20:
+        return ""
+    if sentence.count("/") > 8 or sentence.count('"') > 4:
+        return ""
+    return sentence
+
+
+def inline_answers_after_questions(text: str) -> list[str]:
+    answers = []
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    for match in re.finditer(r"([^?¿]{20,220}\?)\s*([^?]{35,520})", cleaned):
+        tail = match.group(2).strip(" -•\t")
+        tail = re.split(r"(?=\s+[A-ZÁÉÍÓÚÑ]{3,}\s*:)|(?=\s+CUANDO\s+)|(?=\s+QUE\s+)", tail)[0].strip()
+        tail = clean_chat_sentence(tail)
+        if tail and "duplicate_content" not in tail.lower():
+            answers.append(tail[:420])
+    return answers
+
+
+def extract_inventory_items(text: str, limit: int = 6) -> list[str]:
+    items: list[str] = []
+    for match in re.finditer(r"\[[^\]]+\]\s+([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(\.[a-z0-9]+)", text or "", flags=re.I):
+        name = re.sub(r"\s+", " ", match.group(1)).strip()
+        path = re.sub(r"\s+", " ", match.group(2)).strip()
+        ext = match.group(3).strip()
+        if not name:
+            continue
+        label = f"{name} ({ext})"
+        if path and path != name:
+            label += f" en {path}"
+        if label not in items:
+            items.append(label)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
+    terms = chat_terms(question)
+    inventory_items: list[str] = []
+    ranked: list[tuple[int, int, str]] = []
+
+    for chunk_index, chunk in enumerate(chunks[:8]):
+        text = chunk.get("text") or ""
+        for item in extract_inventory_items(text, limit=4):
+            if item not in inventory_items:
+                inventory_items.append(item)
+        for answer in inline_answers_after_questions(text):
+            low = answer.lower()
+            score = sum(4 for term in terms if term in low)
+            if score or any(term in (text or "").lower() for term in terms):
+                priority_boost = max(0, 10 - chunk_index)
+                ranked.append((score + 3 + priority_boost, chunk_index, answer))
+        for sentence in split_relevant_sentences(text):
+            low = sentence.lower()
+            score = sum(3 for term in terms if term in low)
+            if any(marker in low for marker in ("indica", "recomienda", "utilizar", "seleccion", "selección", "protocolo", "material")):
+                score += 1
+            if score:
+                score += max(0, 5 - chunk_index)
+                ranked.append((score, chunk_index, sentence))
+
+    ranked.sort(key=lambda item: (-item[0], item[1], len(item[2])))
+    selected: list[str] = []
+    seen = set()
+    for _, _, sentence in ranked:
+        key = sentence[:140].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(sentence)
+        if len(selected) >= 3:
+            break
+
+    if inventory_items and ("document" in question.lower() or "archivo" in question.lower() or len(selected) < 2):
+        intro = "Tengo localizadas estas fuentes relacionadas:"
+        return intro + "\n" + "\n".join(f"- {item}" for item in inventory_items[:6])
+
+    if selected:
+        answer = "Según lo que tienes guardado: " + selected[0]
+        if len(selected[0]) < 120 and len(selected) > 1:
+            answer += "\n\nAdemás, " + selected[1][:320]
+        return answer
+
+    source_names = []
+    for chunk in chunks[:4]:
+        source = chunk.get("metadata", {}).get("source_name") or "fuente guardada"
+        if source not in source_names:
+            source_names.append(source)
+    if source_names:
+        return (
+            "He encontrado fuentes relacionadas, pero no una respuesta cerrada a esa pregunta. "
+            "Las más cercanas son: " + ", ".join(source_names) + "."
+        )
+    return "No tengo suficiente evidencia guardada para responder eso con rigor."
 
 
 _VECTOR_CACHE: dict[str, object] = {}
@@ -678,22 +869,10 @@ def query_rag(question: str, n_results: int = 6) -> dict:
             "chunks": [],
         }
 
-    top_lines = ["Según lo que tienes guardado:"]
-    for index, chunk in enumerate(chunks[:3], 1):
-        metadata = chunk["metadata"]
-        source = metadata.get("source_name", "fuente")
-        text = re.sub(r"\s+", " ", chunk["text"]).strip()
-        top_lines.append(f"{index}. {text[:420]}\n   Fuente: {metadata.get('patient_code', 'registro')} · {source}")
-    local_answer = "\n\n".join(top_lines)
+    local_answer = local_chat_synthesize(question, chunks)
     synthesized = openai_synthesize(question, chunks)
-    if synthesized and not synthesized.startswith("OpenAI configurado, pero la llamada fallo."):
+    if synthesized:
         answer = synthesized
-    elif synthesized:
-        answer = (
-            local_answer
-            + "\n\nNota tecnica: OpenAI esta configurado, pero la sintesis externa no respondio en esta corrida. "
-            "La respuesta anterior se mantiene en modo RAG local con fuentes recuperadas."
-        )
     else:
         answer = local_answer
     response = {"answer": answer, "sources": sources, "chunks": chunks, "ai": ai_status()}
@@ -705,7 +884,7 @@ def query_rag(question: str, n_results: int = 6) -> dict:
 
 def anonymize(raw: str) -> str:
     if not raw:
-        return "CASE-" + stable_id(now_iso())[:8].upper()
+        return "KNOWLEDGE-BASE"
     return "PAT-" + hashlib.sha256(raw.strip().lower().encode("utf-8")).hexdigest()[:10].upper()
 
 
@@ -1032,6 +1211,10 @@ def search_records(query: str) -> list[dict]:
 class Handler(BaseHTTPRequestHandler):
     server_version = "Evidentia/0.1"
 
+    def is_public_static_path(self, path: str) -> bool:
+        relative = "index.html" if path in {"", "/"} else path.lstrip("/")
+        return relative in PUBLIC_STATIC_FILES or relative.startswith(PUBLIC_STATIC_ROOTS)
+
     def require_auth(self) -> bool:
         if not BASIC_AUTH_ENABLED:
             return True
@@ -1059,7 +1242,7 @@ class Handler(BaseHTTPRequestHandler):
         if not sep:
             self.send_auth_required()
             return False
-        if hmac.compare_digest(username, BASIC_AUTH_USER) and hmac.compare_digest(password, BASIC_AUTH_PASSWORD):
+        if valid_credentials(username, password):
             return True
         self.send_auth_required()
         return False
@@ -1107,7 +1290,7 @@ class Handler(BaseHTTPRequestHandler):
       <p>Acceso privado al nodo de conocimiento. Inicia sesion para continuar.</p>
       {escaped_error}
       <form method="post" action="/api/login">
-        <label>Usuario<input name="username" autocomplete="username" required /></label>
+        <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required /></label>
         <label>Clave<input name="password" type="password" autocomplete="current-password" required /></label>
         <button type="submit">Entrar</button>
       </form>
@@ -1134,7 +1317,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = parse_qs(raw)
             username = payload.get("username", [""])[0]
             password = payload.get("password", [""])[0]
-        if hmac.compare_digest(username, BASIC_AUTH_USER) and hmac.compare_digest(password, BASIC_AUTH_PASSWORD):
+        if valid_credentials(username, password):
             self.send_response(303)
             self.send_header("Location", "/")
             self.send_header("Set-Cookie", f"{SESSION_COOKIE}={SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000")
@@ -1149,7 +1332,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             return
-        if not self.require_auth():
+        if not self.is_public_static_path(parsed.path) and not self.require_auth():
             return
         relative = "index.html" if parsed.path in {"", "/"} else parsed.path.lstrip("/")
         file_path = (ROOT / relative).resolve()
@@ -1170,6 +1353,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/login.html":
             self.serve_login()
+            return
+        if self.is_public_static_path(parsed.path):
+            self.serve_static(parsed.path)
             return
         if not self.require_auth():
             return

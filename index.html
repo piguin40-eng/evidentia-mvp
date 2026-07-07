@@ -12,7 +12,101 @@
     <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260628-mobile-app" />
     <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260628-mobile-app" />
-    <link rel="stylesheet" href="./styles.css?v=20260629-rag-refresh" />
+    <link rel="stylesheet" href="./styles.css?v=20260702-command-deck" />
+    <style>
+      @media (max-width: 720px) {
+        html,
+        body {
+          width: 100%;
+          max-width: 100%;
+          overflow-x: hidden;
+        }
+        .app-topbar {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 10px;
+        }
+        .brand,
+        .case-pill,
+        .install-app,
+        .ai-status {
+          min-width: 0;
+          max-width: 100%;
+          margin-left: 0;
+        }
+        .global-search {
+          grid-column: 1 / -1;
+          min-width: 0;
+        }
+        .case-pill {
+          grid-column: 1 / -1;
+          width: 100%;
+          justify-content: flex-start;
+        }
+        .site-link {
+          display: none;
+        }
+        .app-work,
+        .evidentia-home,
+        .evidentia-hero,
+        .hero-copy,
+        .hero-visual,
+        .command-deck {
+          min-width: 0;
+        }
+        .app-work {
+          width: 100vw;
+          max-width: 100vw;
+          padding-left: 12px;
+          padding-right: 12px;
+          overflow-x: hidden;
+        }
+        .evidentia-home,
+        .evidentia-hero,
+        .command-deck,
+        .value-strip,
+        .knowledge-routing-band,
+        .video-memory-band,
+        .work-grid {
+          width: min(300px, calc(100vw - 56px));
+          max-width: min(300px, calc(100vw - 56px));
+          margin-left: 0;
+          margin-right: 0;
+        }
+        .evidentia-hero {
+          display: flex;
+          flex-direction: column;
+          grid-template-columns: none;
+          overflow: visible;
+        }
+        .hero-copy h1,
+        .hero-claim,
+        .hero-subclaim {
+          display: block;
+          width: min(260px, calc(100vw - 94px));
+          max-width: min(260px, calc(100vw - 94px));
+          white-space: normal;
+          overflow-wrap: break-word;
+        }
+        .command-copy,
+        .command-grid,
+        .command-tile {
+          width: 100%;
+          max-width: 100%;
+          min-width: 0;
+        }
+        .hero-visual {
+          display: block;
+          order: -1;
+          min-height: 260px;
+          aspect-ratio: 36 / 53;
+          margin: 0 0 18px;
+        }
+        #installApp {
+          display: none;
+        }
+      }
+    </style>
   </head>
   <body data-case="" data-consent="pending">
     <header class="app-topbar">
@@ -22,7 +116,7 @@
         <input id="globalSearch" type="search" placeholder="Buscar casos, fotos, videos, PDF, notas, criterios..." />
         <kbd>⌘K</kbd>
       </div>
-      <a class="install-app site-link" href="./reset.html?v=20260629-rag-refresh">Actualizar</a>
+      <a class="install-app site-link" href="./reset.html?v=20260629-mobile-shell">Actualizar</a>
       <a class="install-app site-link" href="./website.html?v=20260622-good-web-restore">Web</a>
       <button class="install-app" id="installApp" type="button">Instalar app</button>
       <div class="ai-status" id="aiStatus" data-state="idle"><span class="pulse"></span><span>IA en reposo</span></div>
@@ -63,11 +157,11 @@
     </footer>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260629-rag-refresh"></script>
+    <script src="./app.js?v=20260704-knowledge-save"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260629-rag-refresh")
+          navigator.serviceWorker.register("./sw.js?v=20260704-knowledge-save")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });

@@ -43,7 +43,8 @@ Para una demo comercial inicial, usar solo registros ficticios o anonimizados. S
 
 - Base estructurada: `data/evidentia.sqlite`
 - Archivos subidos: `data/uploads/`
-- RAG local ChromaDB: `data/rag/chroma/`
+- Indice vectorial compacto local: `data/rag/vector/`
+- Espejo recuperable de chunks: tabla `rag_chunks` en `data/evidentia.sqlite`
 - Exportaciones: `data/exports/`
 - Auditoria: `data/audit/`
 
@@ -53,7 +54,7 @@ Para una demo comercial inicial, usar solo registros ficticios o anonimizados. S
 2. Pegar una transcripcion o explicacion libre de lo que hizo el usuario o equipo.
 3. Subir 2-3 fotos, un PDF, un video corto o una nota.
 4. Registrar si fue exito, fracaso, duda o aprendizaje.
-5. Guardar en el mapa. En ese momento Evidentia indexa notas y texto extraible en Chroma.
+5. Guardar en el mapa. En ese momento Evidentia indexa notas y texto extraible en el RAG local con fuentes.
 6. Entrar en **Chat** y preguntar por algo que el usuario o equipo haya guardado.
 7. Revisar si la respuesta cita fuentes/registros utiles.
 8. Buscar despues por palabras normales, como lo preguntaria una persona del equipo.

@@ -1,6 +1,6 @@
 # Evidentia Backup y Restauracion
 
-Fecha: 2026-06-26
+Fecha: 2026-07-01
 
 ## Objetivo vendible
 
@@ -17,7 +17,7 @@ El script `scripts/evidentia_backup_restore.sh` empaqueta:
 
 - `data/evidentia.sqlite`: registros, entidades, relaciones, evidencias y chunks espejo.
 - `data/uploads/`: archivos aportados por el cliente.
-- `data/rag/`: indice Chroma local.
+- `data/rag/`: indice vectorial compacto local y, si existe, artefactos RAG adicionales.
 - `data/derived/`: transcripciones y derivados.
 - `data/exports/`: packs generados.
 
@@ -58,6 +58,21 @@ sqliteChunks=3
 evidence=0
 ```
 
+## Probar copia restaurada arrancando servidor temporal
+
+```bash
+scripts/clean_restore_smoke_test.sh backups/local-node/evidentia-data-YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+Este smoke test valida el paso que importa comercialmente: no solo extrae el backup, tambien arranca Evidentia contra una copia temporal mediante `EVIDENTIA_DATA_DIR` y prueba:
+
+- `/api/health`
+- `/api/rag/stats`
+- `/api/chat` con fuentes
+- `/api/connectors/export`
+
+La prueba deja evidencia en `qa/clean-restore/` y no toca `data/` activo.
+
 ## Restaurar backup
 
 ```bash
@@ -78,6 +93,7 @@ Despues extrae el backup como nuevo `data/`.
 - Crear backup antes de cargar datos reales.
 - Inspeccionar el backup creado.
 - Ejecutar `verify-restore` antes de prometer recuperacion en una demo.
+- Ejecutar `clean_restore_smoke_test.sh` antes de decir que una copia restaurada arranca y responde preguntas.
 - Guardar copia externa cifrada si el cliente lo pide.
 - Probar restauracion en carpeta/equipo de staging antes de tocar datos reales.
 - Confirmar en `/api/health` que el numero de registros coincide.

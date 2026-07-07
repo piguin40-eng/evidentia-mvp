@@ -6,15 +6,15 @@ Plataforma local-first para crear el espejo vectorial del conocimiento de una pe
 
 - Ingesta de texto, dictado del navegador y archivos asociados.
 - Subida real de archivos al servidor local en `data/uploads/`.
-- Indexacion real en ChromaDB persistente bajo `data/rag/chroma/`.
+- Indexacion real en indice vectorial compacto local bajo `data/rag/vector/`, con espejo de chunks en SQLite.
 - Extraccion inicial de texto desde TXT, Markdown, HTML, CSV, JSON y PDF.
 - Vision local inicial para imagenes y videos: dimensiones, luminosidad, color, detalle y frames extraidos de video.
-- Transcripcion local de audio y video con Whisper CLI: ffmpeg extrae audio, Whisper genera texto con timestamps y Evidentia lo indexa en Chroma.
-- Integracion OpenAI opcional mediante `OPENAI_API_KEY` para sintetizar respuestas del chat sobre chunks Chroma.
+- Transcripcion local de audio y video con Whisper CLI: ffmpeg extrae audio, Whisper genera texto con timestamps y Evidentia lo indexa en el RAG local.
+- Integracion OpenAI opcional mediante `OPENAI_API_KEY` para sintetizar respuestas del chat sobre chunks recuperados localmente.
 - Separacion simple de identidad/datos sensibles mediante ID anonimizado.
 - Extraccion local de entidades basicas cuando aportan valor: areas, activos, conocimiento, mediciones, resultados y evidencias.
 - Mapa visual local de conocimiento en navegador.
-- Chat interno conectado a `/api/chat` para preguntar al mapa Chroma y recuperar fuentes.
+- Chat interno conectado a `/api/chat` para preguntar al mapa local y recuperar fuentes.
 - Pestaña `Conectar` para exportar un `knowledge bundle` JSON trazable y enlazarlo a agentes, proyectos o automatizaciones.
 - Endpoint local `/api/connectors/export` con registros, fuentes y chunks RAG para integraciones controladas.
 - Busqueda local sobre los registros guardados.
@@ -55,10 +55,10 @@ Abrir:
 
 ## Siguiente paso serio
 
-La base local ya incluye API, SQLite, uploads reales y Chroma persistente. El siguiente paso de produccion es endurecer esta columna vertebral con:
+La base local ya incluye API, SQLite, uploads reales, indice vectorial compacto local y espejo de chunks. El siguiente paso de produccion es endurecer esta columna vertebral con:
 
 - Postgres para organizaciones, usuarios, datos sensibles separados y permisos.
-- Chat RAG conectado a Chroma/pgvector para similitud semantica entre casos, proyectos, notas, fotos, videos, PDF y conocimiento.
+- Chat RAG conectado a un backend vectorial endurecido, como pgvector, Qdrant o Chroma segun despliegue, para similitud semantica entre casos, proyectos, notas, fotos, videos, PDF y conocimiento.
 - Mapa de conocimiento para conectar fuentes sin imponer estructura obligatoria.
 - Conectores gobernados: API keys, permisos por workspace, webhooks y logs de acceso antes de enviar conocimiento fuera del nodo.
 - OCR robusto y vision semantica avanzada.

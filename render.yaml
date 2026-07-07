@@ -17,6 +17,8 @@ services:
         sync: false
       - key: EVIDENTIA_AUTH_MODE
         value: cookie
+      - key: EVIDENTIA_ENABLE_OPENAI_CHAT
+        value: "false"
       - key: OPENAI_MODEL
         value: gpt-4.1-mini
       - key: OPENAI_API_KEY

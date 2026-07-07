@@ -78,8 +78,13 @@ fetch_json /api/connectors/export >"${export_json}"
 
 records="$(json_value "${health_json}" records)"
 chunks="$(json_value "${rag_json}" chunks)"
+compact_vector_chunks="$(json_value "${rag_json}" compactVectorChunks)"
+chroma_chunks="$(json_value "${rag_json}" chromaChunks)"
 sqlite_chunks="$(json_value "${rag_json}" sqliteChunks)"
 ai_enabled="$(json_value "${ai_json}" enabled)"
+if [[ -z "${ai_enabled}" ]]; then
+  ai_enabled="$(json_value "${ai_json}" active)"
+fi
 ai_provider="$(json_value "${ai_json}" provider)"
 sources="$(json_len "${chat_json}" sources)"
 bundle_records="$(json_len "${export_json}" records)"
@@ -100,7 +105,7 @@ if [[ "${chunks:-0}" -lt 3 && "${sqlite_chunks:-0}" -lt 3 ]]; then
 fi
 
 if [[ "${chunks:-0}" -lt 3 && "${sqlite_chunks:-0}" -ge 3 ]]; then
-  warnings+=("Chroma esta vacio; la demo debe presentarse como modo local con fallback SQLite y fuentes, no como RAG vectorial completo")
+  warnings+=("El indice compact vector esta vacio; la demo debe presentarse como modo local con fallback SQLite y fuentes, no como busqueda vectorial completa")
 fi
 
 if [[ "${sources:-0}" -lt 1 ]]; then
@@ -131,10 +136,11 @@ fi
   echo "## Estado Del Nodo"
   echo
   echo "- Registros locales: ${records:-0}"
-  echo "- Chunks Chroma: ${chunks:-0}"
+  echo "- Chunks compact vector: ${compact_vector_chunks:-${chunks:-0}}"
+  echo "- Chunks Chroma: ${chroma_chunks:-not-enabled}"
   echo "- Chunks SQLite: ${sqlite_chunks:-0}"
   if [[ "${chunks:-0}" -ge 3 ]]; then
-    echo "- Modo de recuperacion: Chroma vectorial"
+    echo "- Modo de recuperacion: compact vector local"
   elif [[ "${sqlite_chunks:-0}" -ge 3 ]]; then
     echo "- Modo de recuperacion: fallback SQLite local con fuentes"
   else

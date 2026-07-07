@@ -83,11 +83,14 @@ verify_restore() {
     exit 2
   fi
 
-  python3 - "${restored_db}" <<'PY'
+  python3 - "${restored_db}" "${restored_data}/rag/vector" <<'PY'
+import json
+from pathlib import Path
 import sqlite3
 import sys
 
 db_path = sys.argv[1]
+vector_dir = Path(sys.argv[2])
 conn = sqlite3.connect(db_path)
 try:
     records = conn.execute("select count(*) from records").fetchone()[0]
@@ -96,10 +99,36 @@ try:
 finally:
     conn.close()
 
+chunk_ids_path = vector_dir / "chunk_ids.json"
+embeddings_path = vector_dir / "embeddings.npy"
+if not chunk_ids_path.exists() or not embeddings_path.exists():
+    raise SystemExit("Restored backup is missing compact vector artifacts")
+
+chunk_ids = json.loads(chunk_ids_path.read_text())
+if len(chunk_ids) != chunks:
+    raise SystemExit(
+        f"Restored compact vector chunk count mismatch: chunk_ids={len(chunk_ids)} sqliteChunks={chunks}"
+    )
+
+embedding_rows = "not-checked"
+try:
+    import numpy as np
+
+    embeddings = np.load(embeddings_path, mmap_mode="r")
+    embedding_rows = int(embeddings.shape[0])
+    if embedding_rows != chunks:
+        raise SystemExit(
+            f"Restored compact vector embedding count mismatch: embeddings={embedding_rows} sqliteChunks={chunks}"
+        )
+except ImportError:
+    embedding_rows = "numpy-unavailable"
+
 print(f"RESTORE_CHECK_OK db={db_path}")
 print(f"records={records}")
 print(f"sqliteChunks={chunks}")
 print(f"evidence={evidence}")
+print(f"compactVectorChunkIds={len(chunk_ids)}")
+print(f"compactVectorEmbeddingRows={embedding_rows}")
 if records < 1 or chunks < 1:
     raise SystemExit("Restored backup is not demo-ready: expected at least 1 record and 1 RAG chunk")
 PY

@@ -15,7 +15,8 @@ En la version actual, Evidentia funciona como producto local-first dentro de est
 | Fotos, videos, PDF, STL, DICOM | `data/uploads/` | Carpeta local para binarios del caso |
 | Audio derivado | `data/derived/audio/` | Audio WAV normalizado extraido de audio/video para transcripcion |
 | Transcripciones | `data/derived/transcripts/` | JSON/TXT generados por Whisper local con timestamps |
-| RAG vectorial | `data/rag/chroma/` | ChromaDB persistente local |
+| RAG vectorial compacto | `data/rag/vector/` | Embeddings locales compactos para similitud |
+| Espejo de chunks | `data/evidentia.sqlite` / `rag_chunks` | Recuperacion trazable, fallback y export |
 | Exportaciones | `data/exports/` | Consentimientos, packs e informes descargables |
 | Conectores | `/api/connectors/export` | Bundle JSON trazable para agentes, proyectos y automatizaciones autorizadas |
 | Auditoria | `data/audit/` | Logs de acciones, accesos y procesamiento |
@@ -26,18 +27,19 @@ En el MVP, los datos viven dentro del ordenador/servidor donde se instala Eviden
 
 - La informacion estructurada se guarda en SQLite dentro de la propia app.
 - Los archivos del caso se guardan en una carpeta local de uploads.
-- El RAG vectorial vive en ChromaDB local dentro de `data/rag/chroma/`.
+- El RAG activo vive en un indice vectorial compacto local dentro de `data/rag/vector/`, con espejo de chunks en SQLite.
 - No hace falta enviar datos a una nube externa para que el MVP funcione localmente.
 
 ## Estado RAG actual
 
-- Backend: ChromaDB persistente.
-- Coleccion: `evidentia_knowledge`.
+- Backend activo de demo: `compact_vector`.
+- Indice: `data/rag/vector/embeddings.npy` y `data/rag/vector/chunk_ids.json`.
 - Tabla espejo de chunks: `rag_chunks` en `data/evidentia.sqlite`.
+- Chroma puede existir como backend evolutivo o legado, pero no debe prometerse como backend activo si `/api/rag/stats` lo reporta como `not-enabled` o con 0 chunks.
 - Export v1: `GET /api/connectors/export` devuelve registros, evidencias y chunks con politica de uso y revision humana obligatoria.
 - Cada registro guardado indexa notas del caso y texto extraido de TXT, Markdown, HTML, CSV, JSON y PDF.
 - Imagenes: se analizan localmente con dimensiones, orientacion, luminosidad, color medio, calidez, variacion cromatica y detalle/bordes.
-- Videos: se extraen frames con ffmpeg, se analizan visualmente y se indexan como texto en Chroma.
+- Videos: se extraen frames con ffmpeg, se analizan visualmente y se indexan como texto en el RAG local.
 - Audio/video: se transcribe localmente con Whisper CLI cuando esta disponible. ffmpeg extrae audio normalizado, Whisper genera JSON/TXT con timestamps y el texto se indexa en el RAG del cliente. Especificacion: VIDEO_TRANSCRIPTION_RAG.md.
 - OCR y vision dental semantica quedan como capas posteriores.
 
@@ -59,7 +61,7 @@ La clinica compra Evidentia y se instala un nodo local en su ordenador, NAS o se
 
 - Los datos viven dentro de su entorno.
 - SQLite/Postgres local guarda la estructura.
-- Chroma local guarda el RAG.
+- El indice vectorial compacto local guarda la recuperacion semantica; SQLite conserva el espejo trazable de chunks.
 - Los archivos viven en carpetas locales.
 - Es la opcion mas facil de explicar para privacidad y confianza inicial.
 

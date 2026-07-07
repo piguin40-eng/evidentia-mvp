@@ -27,6 +27,7 @@ No iniciar un piloto fundador si falta cualquiera de estos puntos:
 - Entorno de instalacion acordado.
 - Criterio de exito elegido antes de cargar datos.
 - Plan de backup antes de manipular informacion sensible.
+- Decision Pack completado desde PEDRO_PILOT_DECISION_PACK_TEMPLATE.md, con dolor comprable, 3 fuentes permitidas, pregunta real de demo, validador, precio y siguiente accion.
 
 ## Criterios De Exito
 
@@ -65,4 +66,3 @@ Parar o no convertir a continuidad si ocurre cualquiera de estos puntos:
 - Backup verificado:
 - Riesgos o limites observados:
 - Decision: continuar / pausar / descartar.
-

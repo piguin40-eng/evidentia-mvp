@@ -185,7 +185,7 @@ async function persistRecord(record) {
 
 function aiStatusLabel() {
   if (state.aiProvider && state.aiProvider.active) return "IA activa";
-  return "Mirror local";
+  return "Verificable local";
 }
 
 function setAiState(stateName, label) {
@@ -353,16 +353,20 @@ function bindViewEvents() {
 }
 
 function renderIntake() {
+  const rag = state.ragStats || { chunks: 0, sqliteChunks: 0, backend: "local" };
+  const chunks = rag.chunks || rag.sqliteChunks || 0;
+  const aiActive = Boolean(state.aiProvider && state.aiProvider.active);
   return '<section class="evidentia-home">' +
     '<article class="evidentia-hero">' +
-    '<div class="hero-copy"><span class="eyebrow">Evidentia</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Guarda. Consulta. Decide.</p><p class="hero-subclaim">Todo el conocimiento del equipo en un sitio.</p>' +
-    '<div class="hero-actions"><button class="primary" data-focus-notes type="button">Nuevo registro</button><button class="secondary" data-set-view="graph" type="button">Ver mapa</button><button class="secondary" data-set-view="connectors" type="button">Agentes / Projects</button><button class="secondary" data-download-consent type="button">Consentimiento</button></div></div>' +
+    '<div class="hero-copy"><span class="eyebrow">Evidentia Local Node</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Memoria privada.<br>Fuentes visibles.<br>Decision humana.</p><p class="hero-subclaim">Mirror consultable con trazabilidad para notas, fotos, audio, video, PDFs y criterio del equipo. No diagnostica: prepara decisiones revisables.</p>' +
+    '<div class="hero-actions"><button class="primary" data-focus-notes type="button">Capturar conocimiento</button><button class="secondary" data-set-view="chat" type="button">Preguntar al mirror</button><button class="secondary" data-set-view="connectors" type="button">Conectar agentes</button><button class="secondary" data-download-consent type="button">Consentimiento</button></div></div>' +
     '<div class="hero-visual" aria-label="Evidentia en funcionamiento">' +
     '<video class="hero-video" autoplay muted loop playsinline disablepictureinpicture preload="metadata" poster="./assets/evidentia/evidentia-reference-hero-poster.jpg?v=' + HERO_VIDEO_VERSION + '"><source src="./assets/evidentia/evidentia-reference-hero.mp4?v=' + HERO_VIDEO_VERSION + '" type="video/mp4"></video>' +
     '<canvas class="cube-canvas hero-cube-canvas" width="300" height="220" aria-hidden="true"></canvas>' +
     '<div class="hero-video-brand"><strong class="brand-word">' + BRAND_WORD + '</strong><span>Knowledge OS</span></div>' +
-    '<div class="hero-video-metrics"><span>' + state.records.length + ' registros</span><span>' + totalEvidence() + ' archivos</span><span>listo</span></div>' +
+    '<div class="hero-video-metrics"><span>' + state.records.length + ' registros</span><span>' + chunks + ' chunks</span><span>' + (aiActive ? "IA opt-in" : "Sin salida externa") + '</span></div>' +
     '</div></article>' +
+    renderCommandDeck() +
     '<div class="value-strip">' +
     '<button class="value-card" data-focus-notes type="button"><strong>Registros</strong><span>Casos, proyectos, reuniones, clases y protocolos.</span></button>' +
     '<button class="value-card" data-set-view="pack" type="button"><strong>Archivos</strong><span>Audio, v&iacute;deo, fotos, PDF y notas.</span></button>' +
@@ -387,6 +391,34 @@ function renderIntake() {
     renderPipelineSteps("intake") +
     '<div class="trust-stack"><span>Guardado</span><span>Consultable</span><span>Revisable</span></div></article>' +
     '</section></section>';
+}
+
+function renderCommandDeck() {
+  const rag = state.ragStats || { chunks: 0, sqliteChunks: 0, backend: "local" };
+  const chunks = rag.chunks || rag.sqliteChunks || 0;
+  const aiActive = Boolean(state.aiProvider && state.aiProvider.active);
+  const provider = aiActive && state.aiProvider.provider ? state.aiProvider.provider : "apagada";
+  return '<section class="command-deck" aria-label="Panel operativo Evidentia">' +
+    '<div class="command-copy">' +
+    '<span class="eyebrow">Command deck</span>' +
+    '<h2>El estado del mirror debe verse antes de tocar nada.</h2>' +
+    '<p>Esta es la capa de control: que hay dentro, que fuente se recupera, que sale del nodo y donde debe intervenir una persona.</p>' +
+    '</div>' +
+    '<div class="command-grid">' +
+    commandTile("Nodo", state.apiOnline ? "SQLite activo" : "Demo local", state.apiOnline ? "Datos persistidos en servidor local." : "Fallback de navegador, util solo para demo.", state.apiOnline ? "ok" : "warn", "storage") +
+    commandTile("RAG", chunks + " chunks", chunks ? "Fuentes recuperables para preguntas." : "Faltan registros para memoria real.", chunks ? "ok" : "warn", "graph") +
+    commandTile("Modo verificable", aiActive ? provider : "sin salida externa", aiActive ? "Proveedor conectado por opt-in." : "Busqueda local con fuentes, sin enviar datos fuera del nodo.", aiActive ? "warn" : "ok", "chat") +
+    commandTile("Gate humano", "obligatorio", "Build, adjust o stop antes de prometer valor.", "warn", "pack") +
+    '</div>' +
+    '</section>';
+}
+
+function commandTile(label, valueText, detail, tone, view) {
+  return '<button class="command-tile ' + escapeHtml(tone) + '" data-set-view="' + escapeHtml(view) + '" type="button">' +
+    '<span>' + escapeHtml(label) + '</span>' +
+    '<strong>' + escapeHtml(String(valueText)) + '</strong>' +
+    '<small>' + escapeHtml(detail) + '</small>' +
+    '</button>';
 }
 
 function renderKnowledgeRoutingBand() {
@@ -553,15 +585,18 @@ function renderLocalFirstPanel() {
   const provider = state.aiProvider && state.aiProvider.provider ? state.aiProvider.provider : "sin proveedor externo";
   const rag = state.ragStats || { chunks: 0, sqliteChunks: 0 };
   const chunks = rag.chunks || rag.sqliteChunks || 0;
+  const sourceProof = chunks ? chunks + ' fragmentos citables' : 'pendiente de indexar';
   return '<div class="local-first-panel" aria-label="Control local">' +
-    '<span class="eyebrow">Control local</span>' +
-    '<strong>' + (aiActive ? "IA externa opt-in" : "Mirror local") + '</strong>' +
+    '<span class="eyebrow">Prueba local-first</span>' +
+    '<strong>' + (aiActive ? "IA externa opt-in: verificar permiso" : "Sin salida externa activa") + '</strong>' +
     '<ul>' +
     '<li><span>Datos</span><b>' + (state.apiOnline ? "SQLite local" : "Navegador local") + '</b></li>' +
-    '<li><span>RAG</span><b>' + chunks + ' fragmentos</b></li>' +
-    '<li><span>IA</span><b>' + escapeHtml(aiActive ? provider : "apagada") + '</b></li>' +
+    '<li><span>Fuentes</span><b>' + sourceProof + '</b></li>' +
+    '<li><span>Salida externa</span><b>' + escapeHtml(aiActive ? provider : "ninguna") + '</b></li>' +
+    '<li><span>Decision</span><b>humana, no clinica automatica</b></li>' +
     '</ul>' +
-    '<p>Recupera fuentes del nodo. No diagnostica, prescribe ni sustituye revision humana.</p>' +
+    '<p>Modo de demo recomendado: mostrar respuesta, abrir fuentes y descargar bundle. Si no hay evidencia suficiente, no se vende como respuesta clinica.</p>' +
+    '<div class="local-proof-actions"><button class="secondary" id="exportKnowledgeBundle" type="button">Descargar prueba JSON</button><button class="secondary" data-set-view="connectors" type="button">Ver trazabilidad</button></div>' +
     '</div>';
 }
 
@@ -646,8 +681,39 @@ function connectorCard(title, text, actionHtml) {
 }
 
 function renderCases() {
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Vault</span><h1>Casos estructurados</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
-    '<div class="case-list">' + (state.records.length ? state.records.map(resultCard).join("") : '<p class="muted">Todavia no hay registros.</p>') + '</div></section>';
+  const groups = groupedCases();
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Vault</span><h1>Casos estructurados</h1><p class="lead">Cada caso agrupa sus entradas. Yolito, notas, fotos y PDFs se guardan dentro del conocimiento; no como paginas nuevas.</p></div><span class="score">' + groups.length + ' casos · ' + state.records.length + ' entradas</span></div>' +
+    '<div class="case-list">' + (groups.length ? groups.map(caseGroupCard).join("") : '<p class="muted">Todavia no hay conocimiento guardado.</p>') + '</div></section>';
+}
+
+function groupedCases() {
+  const groups = new Map();
+  state.records.forEach((record) => {
+    const key = record.patientCode || "KNOWLEDGE-BASE";
+    if (!groups.has(key)) groups.set(key, { key, records: [], files: 0, entities: 0, latestAt: "" });
+    const group = groups.get(key);
+    group.records.push(record);
+    group.files += (record.files || []).length;
+    group.entities += knowledgeEntities(record).length;
+    if (!group.latestAt || String(record.createdAt || "") > group.latestAt) group.latestAt = String(record.createdAt || "");
+  });
+  return Array.from(groups.values()).map((group) => {
+    group.records.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    group.latest = group.records[0];
+    return group;
+  }).sort((a, b) => String(b.latestAt || "").localeCompare(String(a.latestAt || "")));
+}
+
+function caseGroupCard(group) {
+  const latest = group.latest;
+  const label = group.key === "KNOWLEDGE-BASE" ? "Base de conocimiento" : group.key;
+  const recent = group.records.slice(0, 3).map((record) => escapeHtml(record.recordType) + " · " + escapeHtml(record.domain)).join(" / ");
+  return '<article class="case-card"><button data-select-case="' + escapeHtml(latest.id) + '" type="button">' +
+    '<strong>' + escapeHtml(label) + '</strong>' +
+    '<span>' + group.records.length + ' entradas guardadas · ultima: ' + escapeHtml(latest.recordType) + '</span>' +
+    '<p>' + escapeHtml(latest.notes.slice(0, 220)) + (latest.notes.length > 220 ? "..." : "") + '</p>' +
+    '<small>' + group.entities + ' entidades · ' + group.files + ' evidencias · ' + recent + '</small>' +
+    '</button></article>';
 }
 
 function renderConsent() {
@@ -708,7 +774,8 @@ async function saveCaseFromForm(event) {
   state.activeRecordId = saved.id;
   saveRecords();
   await loadRagStats();
-  setView("entities");
+  render();
+  showToast("Guardado en el conocimiento. No se ha abierto ninguna pagina nueva.");
 }
 
 async function buildRecordFromForm() {
@@ -824,7 +891,7 @@ function relationFor(type) {
 }
 
 function anonymize(raw) {
-  if (!raw) return "CASE-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+  if (!raw) return "KNOWLEDGE-BASE";
   let hash = 0;
   for (let index = 0; index < raw.length; index += 1) {
     hash = (hash << 5) - hash + raw.charCodeAt(index);
@@ -862,7 +929,8 @@ function loadSampleRecord() {
   state.records.unshift(record);
   state.activeRecordId = record.id;
   saveRecords();
-  setView("entities");
+  render();
+  showToast("Plantilla guardada como conocimiento.");
 }
 
 function activeRecord() {
