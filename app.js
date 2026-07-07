@@ -1373,14 +1373,44 @@ function startDictation() {
     showToast("Este navegador no expone dictado. Pega la transcripcion o usa Chrome.");
     return;
   }
+  if (!window.isSecureContext) {
+    showToast("El dictado necesita HTTPS. Abre el enlace seguro de Evidentia.");
+    return;
+  }
+  const dictationButton = document.querySelector("#startDictation");
   const recognition = new SpeechRecognition();
   recognition.lang = "es-ES";
   recognition.interimResults = false;
+  recognition.continuous = false;
+  recognition.onstart = () => {
+    if (dictationButton) dictationButton.textContent = "Escuchando...";
+    showToast("Dictado activo. Acepta el permiso de microfono si aparece.");
+  };
   recognition.onresult = (event) => {
     const notes = document.querySelector("#notes");
     notes.value = (notes.value + "\n" + event.results[0][0].transcript).trim();
+    showToast("Dictado anadido a la nota.");
   };
-  recognition.start();
+  recognition.onerror = (event) => {
+    const code = event && event.error ? event.error : "error";
+    const messages = {
+      "not-allowed": "Microfono bloqueado. Activalo en permisos del navegador para esta web.",
+      "service-not-allowed": "El navegador ha bloqueado el servicio de dictado. Prueba Chrome o revisa permisos.",
+      "no-speech": "No he detectado voz. Pulsa Dictar de nuevo y habla cerca del microfono.",
+      "audio-capture": "No hay microfono disponible o el sistema lo tiene bloqueado.",
+      "network": "El dictado del navegador no responde por red. Pega la transcripcion o reintenta."
+    };
+    showToast(messages[code] || ("Dictado no disponible: " + code));
+  };
+  recognition.onend = () => {
+    if (dictationButton) dictationButton.textContent = "Dictar";
+  };
+  try {
+    recognition.start();
+  } catch {
+    if (dictationButton) dictationButton.textContent = "Dictar";
+    showToast("El dictado ya estaba activo o el navegador lo ha bloqueado.");
+  }
 }
 
 function consentValues() {
