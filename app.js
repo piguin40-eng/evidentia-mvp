@@ -29,6 +29,7 @@ const state = {
   activeRecordId: null,
   activeView: "intake",
   activeEntityKey: null,
+  activeGraphNodeId: "root",
   apiOnline: false,
   ragStats: null,
   aiProvider: null,
@@ -96,6 +97,7 @@ async function bootstrap() {
   if (hashView && ALL_VIEWS.includes(hashView)) {
     state.activeView = hashView;
   }
+  document.querySelectorAll(".rail-item").forEach((button) => button.classList.toggle("active", button.dataset.view === state.activeView));
   render();
   requestAnimationFrame(drawCube);
 }
@@ -325,6 +327,19 @@ function bindViewEvents() {
       setView("entities");
     });
   });
+  document.querySelectorAll("[data-map-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeGraphNodeId = button.dataset.mapNode || "root";
+      render();
+    });
+  });
+  document.querySelectorAll("[data-map-case]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeRecordId = button.dataset.mapCase;
+      state.activeGraphNodeId = "case:" + button.dataset.mapCase;
+      render();
+    });
+  });
   const consentInputs = document.querySelectorAll("[data-consent-input]");
   consentInputs.forEach((input) => input.addEventListener("input", updateConsentPreview));
   document.querySelectorAll("[data-download-consent]").forEach((button) => {
@@ -529,21 +544,29 @@ function renderEvidencePanel(record) {
 }
 
 function renderGraph() {
-  const record = activeRecord();
-  if (!record) {
-    return '<section class="card global-graph-card"><div class="section-head"><div><span class="eyebrow">Mapa RAG</span><h1>Conocimiento conectado</h1><p class="lead">Vista global de como Evidentia conecta conocimiento, casos clinicos, pacientes y datos con agentes y projects autorizados.</p></div><span class="score">' + state.records.length + ' registros</span></div>' +
-      '<div class="graph-canvas global-graph"><canvas class="cube-canvas graph-vector-canvas" width="760" height="420" aria-hidden="true"></canvas><div class="graph-root">RAG</div>' +
-      '<article class="graph-node node-knowledge"><strong>Conocimiento</strong><span>protocolos · decisiones · aprendizaje</span></article>' +
-      '<article class="graph-node node-evidence"><strong>Casos clinicos</strong><span>fuentes recuperables</span></article>' +
-      '<article class="graph-node node-outcome"><strong>Pacientes</strong><span>datos separados y seudonimizados</span></article>' +
-      '<article class="graph-node node-measurement"><strong>Datos</strong><span>archivos · transcripciones · chunks</span></article>' +
-      '<article class="graph-node node-agent"><strong>Agentes</strong><span>Pedro · Faki · Yolito · otros roles</span></article>' +
-      '<article class="graph-node node-project"><strong>Projects</strong><span>Claude / ChatGPT con bundle trazable</span></article>' +
-      '</div>' + renderKnowledgeRoutingBand() + '</section>';
-  }
-  const graphNodes = graphDisplayNodes(record);
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Mapa</span><h1>Conexiones</h1></div><span class="score">' + graphNodes.length + ' puntos</span></div>' +
-    '<div class="graph-canvas"><canvas class="cube-canvas graph-vector-canvas" width="760" height="420" aria-hidden="true"></canvas><div class="graph-root">' + escapeHtml(record.patientCode) + '</div>' + graphNodes.map((node, index) => '<article class="graph-node node-' + escapeHtml(node.type) + '" style="--i:' + index + '"><strong>' + escapeHtml(node.label) + '</strong><span>' + escapeHtml(node.relation) + '</span></article>').join("") + '</div></section>';
+  const map = buildKnowledgeMap();
+  const selected = map.nodes.find((node) => node.id === state.activeGraphNodeId) || map.nodes[0];
+  const fileCount = map.nodes.filter((node) => node.kind === "file").length;
+  const edgeHtml = map.edges.map((edge) => {
+    const from = map.nodeById[edge.from];
+    const to = map.nodeById[edge.to];
+    if (!from || !to) return "";
+    const active = selected && (selected.id === from.id || selected.id === to.id);
+    return '<line class="' + (active ? "active" : "") + '" x1="' + from.x + '%" y1="' + from.y + '%" x2="' + to.x + '%" y2="' + to.y + '%"></line>';
+  }).join("");
+  const nodeHtml = map.nodes.map((node) => {
+    const selectedClass = selected && selected.id === node.id ? " selected" : "";
+    return '<button class="map-node map-node-' + escapeHtml(node.kind) + selectedClass + '" data-map-node="' + escapeHtml(node.id) + '" type="button" style="--x:' + node.x + '%;--y:' + node.y + '%;--s:' + node.size + 'px" aria-pressed="' + (selectedClass ? "true" : "false") + '">' +
+      '<span></span><strong>' + escapeHtml(node.label) + '</strong><small>' + escapeHtml(node.meta) + '</small></button>';
+  }).join("");
+  return '<section class="card knowledge-map-shell"><div class="section-head"><div><span class="eyebrow">Mapa de archivos</span><h1>Tu conocimiento visible</h1><p class="lead">Vista tipo mapa: archivos, casos, notas y entidades conectados para entender donde vive cada fuente.</p></div><span class="score">' + fileCount + ' archivos · ' + map.edges.length + ' enlaces</span></div>' +
+    '<div class="knowledge-map-layout">' +
+    '<aside class="knowledge-map-sidebar"><div><span class="eyebrow">Vault</span><h3>Fuentes</h3></div>' + renderMapFileTree(map) + '</aside>' +
+    '<div class="knowledge-map-stage" aria-label="Mapa visual de archivos Evidentia"><svg class="knowledge-map-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">' + edgeHtml + '</svg>' + nodeHtml + '</div>' +
+    '<aside class="knowledge-map-detail">' + renderMapDetail(selected) + '</aside>' +
+    '</div>' +
+    '<div class="map-toolbar"><button class="secondary" data-map-node="root" type="button">Centrar mapa</button><button class="secondary" data-set-view="intake" type="button">Subir archivos</button><button class="secondary" data-set-view="chat" type="button">Preguntar al mirror</button></div>' +
+    '</section>';
 }
 
 function graphDisplayNodes(record) {
@@ -552,6 +575,145 @@ function graphDisplayNodes(record) {
     if (node.type === "evidence" && normalizeText(node.label || "") === "evidencia asociada") return false;
     return true;
   });
+}
+
+function buildKnowledgeMap() {
+  const records = state.records || [];
+  const active = activeRecord();
+  const orderedRecords = active ? [active].concat(records.filter((record) => record.id !== active.id)) : records.slice();
+  const nodes = [{
+    id: "root",
+    kind: "root",
+    label: "Evidentia",
+    meta: "mirror local",
+    detail: "Centro del mapa. Desde aqui se conectan casos, archivos, notas, entidades y conocimiento recuperable.",
+    x: 50,
+    y: 50,
+    size: 58
+  }];
+  const edges = [];
+  const clusterNodes = [
+    { id: "cluster:files", kind: "cluster", label: "Archivos", meta: "evidencias", detail: "Fotos, videos, PDFs, audios y documentos guardados.", x: 24, y: 22, size: 44 },
+    { id: "cluster:cases", kind: "cluster", label: "Casos", meta: "expedientes", detail: "Registros clinicos o de proyecto que agrupan fuentes.", x: 77, y: 28, size: 46 },
+    { id: "cluster:notes", kind: "cluster", label: "Notas", meta: "criterio", detail: "Observaciones, decisiones y aprendizaje humano.", x: 29, y: 78, size: 40 },
+    { id: "cluster:entities", kind: "cluster", label: "Entidades", meta: "conceptos", detail: "Temas detectados en notas y archivos.", x: 76, y: 74, size: 40 }
+  ];
+  clusterNodes.forEach((node) => {
+    nodes.push(node);
+    edges.push({ from: "root", to: node.id });
+  });
+
+  const recordsToShow = orderedRecords.slice(0, 9);
+  recordsToShow.forEach((record, index) => {
+    const point = mapPoint(index, Math.max(recordsToShow.length, 1), 33, 21, -0.35);
+    const caseId = "case:" + record.id;
+    nodes.push({
+      id: caseId,
+      kind: "case",
+      label: record.patientCode || "Caso",
+      meta: (record.files || []).length + " archivos",
+      detail: record.notes || record.recordType || "Registro sin resumen.",
+      recordId: record.id,
+      x: point.x,
+      y: point.y,
+      size: active && active.id === record.id ? 50 : 38
+    });
+    edges.push({ from: "cluster:cases", to: caseId });
+
+    const fileLimit = active && active.id === record.id ? 12 : 4;
+    (record.files || []).slice(0, fileLimit).forEach((file, fileIndex) => {
+      const filePoint = mapPoint(index * fileLimit + fileIndex, Math.max(recordsToShow.length * fileLimit, 8), 42, 31, 0.25);
+      const fileId = "file:" + record.id + ":" + fileIndex;
+      nodes.push({
+        id: fileId,
+        kind: "file",
+        label: file.name || "Archivo",
+        meta: evidenceKind(file),
+        detail: (file.type || "tipo no indicado") + " · " + formatBytes(file.size || 0),
+        recordId: record.id,
+        x: filePoint.x,
+        y: filePoint.y,
+        size: fileNodeSize(file)
+      });
+      edges.push({ from: caseId, to: fileId });
+      edges.push({ from: "cluster:files", to: fileId });
+    });
+
+    knowledgeEntities(record).slice(0, 3).forEach((entity, entityIndex) => {
+      const entityPoint = mapPoint(index * 3 + entityIndex, Math.max(recordsToShow.length * 3, 6), 28, 34, 1.65);
+      const entityId = "entity:" + record.id + ":" + entityKey(entity);
+      if (nodes.some((node) => node.id === entityId)) return;
+      nodes.push({
+        id: entityId,
+        kind: "entity",
+        label: entity.label,
+        meta: entity.type,
+        detail: "Concepto conectado con " + (record.patientCode || "el caso") + ".",
+        recordId: record.id,
+        x: entityPoint.x,
+        y: entityPoint.y,
+        size: 30
+      });
+      edges.push({ from: caseId, to: entityId });
+      edges.push({ from: "cluster:entities", to: entityId });
+    });
+  });
+
+  if (!records.length) {
+    [
+      { id: "demo:pdf", kind: "file", label: "PDF clinico", meta: "documento", detail: "Cuando subas un PDF aparecera como nodo conectado.", x: 19, y: 42, size: 34 },
+      { id: "demo:video", kind: "file", label: "Video caso", meta: "video", detail: "Los videos se conectan al caso y al chat recuperable.", x: 43, y: 22, size: 38 },
+      { id: "demo:audio", kind: "file", label: "Nota de voz", meta: "audio", detail: "Las notas de voz se transcriben y quedan consultables.", x: 62, y: 80, size: 32 }
+    ].forEach((node) => {
+      nodes.push(node);
+      edges.push({ from: "cluster:files", to: node.id });
+      edges.push({ from: "root", to: node.id });
+    });
+  }
+
+  const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  return { nodes, edges, nodeById, records: recordsToShow };
+}
+
+function mapPoint(index, total, rx, ry, offset) {
+  const angle = offset + (Math.PI * 2 * index) / Math.max(total, 1);
+  return {
+    x: Math.round((50 + Math.cos(angle) * rx) * 10) / 10,
+    y: Math.round((50 + Math.sin(angle) * ry) * 10) / 10
+  };
+}
+
+function fileNodeSize(file) {
+  const kind = evidenceKind(file).toLowerCase();
+  if (kind.includes("video")) return 42;
+  if (kind.includes("imagen")) return 38;
+  if (kind.includes("pdf")) return 36;
+  return 32;
+}
+
+function renderMapFileTree(map) {
+  const records = map.records || [];
+  if (!records.length) {
+    return '<div class="map-empty"><strong>Aun no hay vault real</strong><p>Sube PDF, fotos, audio o video y el mapa se llenara automaticamente.</p></div>';
+  }
+  return '<div class="map-file-tree">' + records.map((record) => {
+    const files = record.files || [];
+    const fileRows = files.length
+      ? files.slice(0, 8).map((file, index) => '<button data-map-node="file:' + escapeHtml(record.id) + ':' + index + '" type="button"><strong>' + escapeHtml(file.name || "Archivo") + '</strong><span>' + escapeHtml(evidenceKind(file)) + ' · ' + formatBytes(file.size || 0) + '</span></button>').join("")
+      : '<p>Sin archivos adjuntos.</p>';
+    return '<article><button class="map-tree-case" data-map-case="' + escapeHtml(record.id) + '" type="button"><strong>' + escapeHtml(record.patientCode || "Caso") + '</strong><span>' + files.length + ' fuentes</span></button>' + fileRows + '</article>';
+  }).join("") + '</div>';
+}
+
+function renderMapDetail(node) {
+  if (!node) return "";
+  const record = node.recordId ? state.records.find((item) => item.id === node.recordId) : null;
+  const action = record
+    ? '<button class="secondary" data-map-case="' + escapeHtml(record.id) + '" type="button">Abrir caso</button>'
+    : '<button class="secondary" data-set-view="intake" type="button">Capturar fuente</button>';
+  return '<span class="eyebrow">Nodo seleccionado</span><h3>' + escapeHtml(node.label) + '</h3><p>' + escapeHtml(node.detail || node.meta || "") + '</p>' +
+    '<dl><div><dt>Tipo</dt><dd>' + escapeHtml(node.kind) + '</dd></div><div><dt>Relacion</dt><dd>' + escapeHtml(node.meta || "conectado") + '</dd></div></dl>' +
+    '<div class="actions">' + action + '<button class="secondary" data-set-view="chat" type="button">Preguntar</button></div>';
 }
 
 function renderQuery() {
