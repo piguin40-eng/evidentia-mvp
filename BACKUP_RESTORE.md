@@ -31,6 +31,22 @@ scripts/evidentia_backup_restore.sh backup
 
 El comando devuelve la ruta del archivo `.tar.gz` creado en `backups/local-node/`.
 
+## Backup del nodo Render
+
+En Render, el backup operativo se ejecuta contra el disco persistente del servicio:
+
+```bash
+scripts/render_backup.sh
+```
+
+El script crea una copia en `data/backups/render-node/`, ejecuta `verify-restore` sobre el archivo generado y conserva por defecto los ultimos 14 backups. Se puede ajustar con:
+
+```bash
+EVIDENTIA_BACKUP_RETENTION=30 scripts/render_backup.sh
+```
+
+Este backup protege frente a errores de aplicacion o restauraciones malas dentro del nodo, pero una estrategia de produccion completa debe anadir copia externa cifrada fuera de Render.
+
 ## Inspeccionar backup
 
 ```bash
@@ -100,4 +116,4 @@ Despues extrae el backup como nuevo `data/`.
 
 ## Limite comercial
 
-Esto no es todavia instalador completo ni backup automatico programado. Es el minimo manual defendible para piloto fundador: copia local trazable, inspeccionable y restaurable sin depender de OpenAI.
+Esto no es todavia instalador completo ni copia externa cifrada. Es el minimo defendible para piloto fundador: copia trazable, inspeccionable y restaurable sin depender de OpenAI. En Render, `scripts/render_backup.sh` deja el nodo preparado para ejecucion recurrente mediante job/cron cuando haya destino externo o politica final de retencion.

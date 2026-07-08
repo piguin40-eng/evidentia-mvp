@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="${ROOT}/data"
-BACKUP_DIR="${ROOT}/backups/local-node"
+DATA_DIR="${EVIDENTIA_DATA_DIR:-${ROOT}/data}"
+BACKUP_DIR="${EVIDENTIA_BACKUP_DIR:-${ROOT}/backups/local-node}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 usage() {
@@ -33,18 +33,33 @@ backup() {
     exit 2
   fi
 
+  if [[ ! -f "${DATA_DIR}/evidentia.sqlite" ]]; then
+    echo "SQLite database not found: ${DATA_DIR}/evidentia.sqlite" >&2
+    exit 2
+  fi
+
   local archive="${BACKUP_DIR}/evidentia-data-${STAMP}.tar.gz"
+  local staging
+  staging="$(mktemp -d "${TMPDIR:-/tmp}/evidentia-backup-stage.XXXXXX")"
+  trap 'rm -rf "${staging}"' RETURN
+
+  mkdir -p "${staging}/data"
+  cp "${DATA_DIR}/evidentia.sqlite" "${staging}/data/evidentia.sqlite"
+  for item in uploads rag derived exports; do
+    if [[ -e "${DATA_DIR}/${item}" ]]; then
+      cp -R "${DATA_DIR}/${item}" "${staging}/data/${item}"
+    else
+      mkdir -p "${staging}/data/${item}"
+    fi
+  done
+
   (
-    cd "${ROOT}"
+    cd "${staging}"
     tar \
       --exclude='data/*.log' \
       --exclude='data/**/*.log' \
       -czf "${archive}" \
-      data/evidentia.sqlite \
-      data/uploads \
-      data/rag \
-      data/derived \
-      data/exports 2>/dev/null
+      data
   )
   echo "${archive}"
 }
