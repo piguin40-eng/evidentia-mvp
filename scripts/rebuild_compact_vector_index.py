@@ -12,8 +12,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "evidentia.sqlite"
-VECTOR_DIR = ROOT / "data" / "rag" / "vector"
+DATA_DIR = Path(os.getenv("EVIDENTIA_DATA_DIR", str(ROOT / "data"))).expanduser().resolve()
+DB_PATH = DATA_DIR / "evidentia.sqlite"
+VECTOR_DIR = DATA_DIR / "rag" / "vector"
 MATRIX_PATH = VECTOR_DIR / "embeddings.npy"
 IDS_PATH = VECTOR_DIR / "chunk_ids.json"
 

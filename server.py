@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 import subprocess
 import base64
+import sys
 import tarfile
 import tempfile
 from datetime import datetime, timezone
@@ -601,6 +602,33 @@ def create_runtime_backup() -> dict:
         "removed": removed,
         "createdAt": stamp,
     }
+
+
+def rebuild_runtime_vector_index() -> dict:
+    script = ROOT / "scripts" / "rebuild_compact_vector_index.py"
+    env = os.environ.copy()
+    env["EVIDENTIA_DATA_DIR"] = str(DATA_DIR)
+    completed = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(ROOT),
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+    )
+    payload = {
+        "ok": completed.returncode == 0,
+        "returnCode": completed.returncode,
+        "stdout": completed.stdout.strip(),
+        "stderr": completed.stderr.strip(),
+    }
+    try:
+        parsed = json.loads(completed.stdout.strip().splitlines()[-1])
+        payload.update(parsed)
+    except Exception:
+        pass
+    return payload
 
 
 def ai_status() -> dict:
@@ -1477,6 +1505,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.write_json(create_runtime_backup(), status=201)
             except Exception as exc:
                 self.write_json({"ok": False, "error": str(exc)}, status=500)
+            return
+        if parsed.path == "/api/admin/rebuild-vector":
+            result = rebuild_runtime_vector_index()
+            self.write_json(result, status=200 if result.get("ok") else 500)
             return
         self.write_json({"error": "not found"}, status=404)
 
