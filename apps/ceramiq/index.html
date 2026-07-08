@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>CeramIQ</title>
+    <meta name="description" content="CeramIQ: chat experto de ceramica dental con captura guiada, guia de color, tarjeta BigColor Cera, polarizada y recetas por tercios." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111615'/%3E%3Cpath d='M9 6h14l4 6-8 16-3-5-3 5-8-16z' fill='%23f5e6c8'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="CeramIQ">
+      <nav class="app-nav" aria-label="Navegacion principal">
+        <button class="nav-item active" type="button" data-go="home" aria-label="Inicio"><span class="icon-home"></span><small>Inicio</small></button>
+        <button class="nav-item" type="button" data-go="capture" aria-label="Captura"><span class="icon-scan"></span><small>Scan</small></button>
+        <button class="nav-item" type="button" data-go="analysis" aria-label="Analisis"><span class="icon-lab"></span><small>Analisis</small></button>
+        <button class="nav-item" type="button" data-go="recipe" aria-label="Salida"><span class="icon-recipe"></span><small>Salida</small></button>
+      </nav>
+
+      <section class="screen home-screen active" data-screen="home">
+        <header class="brand-top">
+          <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+          <div>
+            <strong>CeramIQ</strong>
+            <span>By Miguel Arroyo</span>
+          </div>
+          <button class="icon-button" type="button" data-go="library" aria-label="Biblioteca"><span class="dots"></span></button>
+        </header>
+
+        <section class="hero-panel">
+          <div class="tooth-stage" aria-label="Visualizacion dental CeramIQ">
+            <div class="shade-ruler" aria-hidden="true">
+              <span style="background:#f6ead5"></span>
+              <span style="background:#e7d0a9"></span>
+              <span style="background:#cfa675"></span>
+              <span style="background:#a87955"></span>
+            </div>
+            <div class="tooth-model" aria-hidden="true">
+              <span class="third incisal">I</span>
+              <span class="third middle">M</span>
+              <span class="third cervical">C</span>
+            </div>
+            <div class="lab-grid" aria-hidden="true">
+              <b>L* 78.4</b>
+              <b>a* 1.8</b>
+              <b>b* 14.9</b>
+            </div>
+          </div>
+          <p class="eyebrow">Chat experto de ceramica</p>
+          <h1>Consulta el caso y decide mejor la ceramica.</h1>
+          <p class="lead">Sube fotografias, guia, tarjeta gris y polarizada para preguntar material, estrategia optica, masas, sustrato, ajustes y recetas por tercios.</p>
+          <div class="engine-badge">CeramIQ = Ceramic Intelligence</div>
+          <div class="hero-actions">
+            <button class="primary-action" type="button" data-go="capture">Nuevo caso</button>
+            <button class="secondary-action" type="button" data-go="recipe">Ver salida</button>
+          </div>
+        </section>
+
+        <section class="evidence-panel">
+          <div class="evidence-media" aria-label="Mapa vestibular de referencia CeramIQ">
+            <img src="./assets/ceramiq-8-zones-reference.jpg" alt="Referencia vestibular por 8 zonas para analisis ceramico" />
+            <span>8 zonas vestibulares</span>
+          </div>
+          <div class="evidence-copy">
+            <p class="eyebrow">Evidencia comparativa</p>
+            <h2>Objetivo vs prueba, por tercios y zonas.</h2>
+            <p>CeramIQ toma una foto objetivo y una foto de prueba para calcular Delta E, revisar la coherencia del material y preparar una respuesta explicable para el caso.</p>
+          </div>
+        </section>
+
+        <section class="case-summary">
+          <article><span class="signal green"></span><strong>Calibracion</strong><p>Tarjeta gris BigColor detectada</p></article>
+          <article><span class="signal amber"></span><strong>Delta E</strong><p>2.7 objetivo vs prueba</p></article>
+          <article><span class="signal blue"></span><strong>Evidencia</strong><p>Fotos, guia y comparativa</p></article>
+        </section>
+      </section>
+
+      <section class="screen capture-screen" data-screen="capture">
+        <header class="screen-header">
+          <button class="back-button" type="button" data-go="home" aria-label="Volver"></button>
+          <div><p class="eyebrow">Paso 1</p><h2>Captura clinica</h2></div>
+        </header>
+
+        <section class="capture-viewport">
+          <video id="cameraPreview" class="camera-preview" playsinline muted></video>
+          <div class="photo-guide">
+            <span class="guide-box"></span>
+            <span class="guide-card">BigColor gray</span>
+            <span class="guide-label" id="guideLabel">Diente objetivo + guia</span>
+          </div>
+        </section>
+
+        <div class="capture-actions">
+          <button class="secondary-action" type="button" id="startCamera"><span class="camera-icon"></span>Abrir camara</button>
+          <button class="primary-action compact" type="button" id="takePhoto">Capturar</button>
+        </div>
+
+        <section class="shot-list" id="shotList">
+          <button class="shot active" type="button" data-shot="0"><span>1</span><div><strong>Diente objetivo + guia</strong><small>Guia VITA/3D o referencia fisica visible</small></div></button>
+          <button class="shot" type="button" data-shot="1"><span>2</span><div><strong>Tarjeta gris BigColor Cera</strong><small>Base para CIELAB calibrado</small></div></button>
+          <button class="shot" type="button" data-shot="2"><span>3</span><div><strong>Foto polarizada</strong><small>Reduce brillo y revela croma interno</small></div></button>
+          <button class="shot" type="button" data-shot="3"><span>4</span><div><strong>Sustrato / munon</strong><small>Valor, opacidad y riesgo de bloqueo</small></div></button>
+          <button class="shot" type="button" data-shot="4"><span>5</span><div><strong>Prueba / comparativa Delta</strong><small>Foto actual para comparar contra objetivo</small></div></button>
+        </section>
+
+        <section class="case-input-panel">
+          <div class="case-input-head">
+            <div><p class="eyebrow">Brief del caso</p><h3>Que vamos a resolver</h3></div>
+            <span class="save-state" id="saveState">Guardado local</span>
+          </div>
+          <label class="select-field">
+            <span>Sistema ceramico</span>
+            <select id="materialSystem">
+              <option value="ips_emax_ceram">IPS e.max Ceram</option>
+              <option value="ips_emax_style">IPS e.max Style</option>
+              <option value="creation">Creation</option>
+              <option value="noritake_czr">Noritake CZR</option>
+              <option value="vita_vm9">VITA VM9</option>
+              <option value="custom">Otro / personalizado</option>
+            </select>
+          </label>
+          <input class="custom-material" id="customMaterial" type="text" placeholder="Nombre del material personalizado" />
+          <textarea id="caseDescription" rows="4" placeholder="Ej: Carilla ceramica en 21 para copiar 11. Sustrato oscuro, objetivo bleach luminoso. Que material usarias, como bloquearias y que masas pondrias por tercios?"></textarea>
+          <div class="voice-row">
+            <button class="voice-button" type="button" id="recordCaseAudio"><span class="mic-icon"></span><strong>Grabar audio del caso</strong></button>
+            <audio id="caseAudioPreview" controls></audio>
+          </div>
+        </section>
+
+        <div class="upload-grid">
+          <label class="upload-action">
+            <input id="photoInput" type="file" accept="image/*" multiple />
+            <span class="upload-icon"></span>
+            <span><strong>Subir fotos del caso</strong><small>Objetivo, tarjeta, polarizada, sustrato o prueba</small></span>
+          </label>
+          <label class="upload-action guide-upload">
+            <input id="guideInput" type="file" accept="image/*" />
+            <span class="guide-upload-icon"></span>
+            <span><strong>Subir guia de color</strong><small>VITA, 3D-Master o guia fisica fotografiada</small></span>
+          </label>
+        </div>
+        <section class="saved-media" id="savedMedia">
+          <div><strong>Fotos guardadas</strong><span id="savedCount">0 archivos</span></div>
+          <div class="media-grid" id="mediaGrid"></div>
+          <button class="clear-button" type="button" id="clearCase">Vaciar caso local</button>
+        </section>
+        <p class="note" id="cameraNote">Arnes activo: cada foto se analiza con CeramIQ. Sin tarjeta gris, guia y polarizada, CIELAB y Delta E quedan estimados.</p>
+        <div class="case-actions">
+          <button class="secondary-action" type="button" id="indexCase">Indexar en Atlas</button>
+          <button class="primary-action" type="button" data-go="processing" id="runAnalysis">Analizar caso</button>
+        </div>
+      </section>
+
+      <section class="screen processing-screen" data-screen="processing">
+        <div class="processing-core" aria-live="polite">
+          <div class="analysis-orbit" aria-hidden="true"><span></span><i></i><b></b></div>
+          <p class="eyebrow">CeramIQ engine</p>
+          <h2>Calculando mapa optico</h2>
+          <p class="engine-note" id="engineNote">CeramIQ revisa fotos, guia, tarjeta y polarizada antes de responder al caso.</p>
+          <div class="check-stack">
+            <span class="done">Balance de blancos aplicado</span>
+            <span class="done">Tercios dentales segmentados</span>
+            <span class="done">CIELAB comparado</span>
+            <span>Respuesta ceramica generada</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen analysis-screen" data-screen="analysis">
+        <header class="screen-header">
+          <button class="back-button" type="button" data-go="capture" aria-label="Volver"></button>
+          <div><p class="eyebrow">Resultado CeramIQ</p><h2>Diagnostico optico</h2></div>
+        </header>
+
+        <section class="lab-card">
+          <div class="tooth-map large" aria-hidden="true"><span>Incisal</span><span>Medio</span><span>Cervical</span></div>
+          <div class="delta-score">
+            <span class="pill amber" id="deltaBadge">Delta E 2.7</span>
+            <h3>Comparativa objetivo vs prueba</h3>
+            <p id="analysisSummary">La restauracion esta ligeramente alta de valor en incisal y baja de croma en cervical.</p>
+          </div>
+        </section>
+
+        <section class="third-stack">
+          <article><div><strong>Incisal</strong><span>Objetivo L* 81.2 a* 0.4 b* 9.8</span></div><em>Actual L* 84.0 a* 0.2 b* 8.2</em><p>Demasiado luminoso y frio; necesita translucidez gris-azulada controlada.</p></article>
+          <article><div><strong>Medio</strong><span>Objetivo L* 78.4 a* 1.8 b* 14.9</span></div><em>Actual L* 78.9 a* 1.5 b* 13.1</em><p>Valor correcto, falta croma dentinario suave.</p></article>
+          <article><div><strong>Cervical</strong><span>Objetivo L* 72.6 a* 3.2 b* 19.4</span></div><em>Actual L* 74.2 a* 2.2 b* 16.7</em><p>Zona baja en saturacion; requiere dentina cervical mas calida.</p></article>
+        </section>
+
+        <section class="validation-panel">
+          <div><p class="eyebrow">Validacion</p><h3>Evidencia del analisis</h3></div>
+          <div class="validation-list" id="validationList">
+            <span>Sin analisis ejecutado</span>
+          </div>
+          <p id="analysisMeta">Sube fotos y pulsa analizar para generar trazabilidad.</p>
+        </section>
+
+        <section class="ceramiq-answer" id="ceramiqAnswer">
+          <div>
+            <p class="eyebrow">Lectura del caso</p>
+            <h3>Sube el caso para recibir una respuesta util para clase.</h3>
+          </div>
+          <p>La respuesta quedara separada en diagnostico por tercios, riesgos de calibracion, material recomendado, estrategia optica y receta cuando proceda. Si falta guia, gris o polarizada, CeramIQ lo marcara como estimado.</p>
+        </section>
+
+        <button class="primary-action" type="button" data-go="recipe">Ver respuesta</button>
+      </section>
+
+      <section class="screen recipe-screen" data-screen="recipe">
+        <header class="screen-header">
+          <button class="back-button" type="button" data-go="analysis" aria-label="Volver"></button>
+          <div><p class="eyebrow">Salida CeramIQ</p><h2>Respuesta del caso</h2></div>
+        </header>
+
+        <section class="recipe-hero">
+          <span class="pill good">Confianza 86%</span>
+          <h3>IPS e.max Ceram sobre sustrato ND2</h3>
+          <p>Respuesta demo orientativa. Validar grosor, sustrato, cemento, material y tabla de coccion oficial antes de produccion clinica.</p>
+        </section>
+
+        <section class="recipe-stack">
+          <article>
+            <header><strong>Tercio cervical</strong><span>Aplicacion: 0.35 mm, saturacion controlada</span></header>
+            <ul>
+              <li><b>IPS e.max Ceram Deep Dentin A2 - 35%</b><span>Sube croma y cuerpo cervical.</span></li>
+              <li><b>IPS e.max Ceram Dentin A2 - 20%</b><span>Aporta saturacion dentinaria real del sistema.</span></li>
+              <li><b>IPS e.max Ceram Dentin A1 - 25%</b><span>Integra valor base con transicion natural.</span></li>
+              <li><b>IPS e.max Ceram Transpa neutral - 20%</b><span>Evita bloqueo opaco del margen.</span></li>
+            </ul>
+          </article>
+          <article>
+            <header><strong>Tercio medio</strong><span>Aplicacion: masa principal en mamelones suaves</span></header>
+            <ul>
+              <li><b>IPS e.max Ceram Dentin A1 - 38%</b><span>Valor y cuerpo dentinario principal.</span></li>
+              <li><b>IPS e.max Ceram Incisal I1 - 22%</b><span>Luminosidad interna controlada.</span></li>
+              <li><b>IPS e.max Ceram Dentin A2 - 18%</b><span>Ajuste de croma medio.</span></li>
+              <li><b>IPS e.max Ceram Transpa neutral - 22%</b><span>Profundidad sin bajar valor.</span></li>
+            </ul>
+          </article>
+          <article>
+            <header><strong>Tercio incisal</strong><span>Aplicacion: halo fino y borde translucido</span></header>
+            <ul>
+              <li><b>IPS e.max Ceram Opal Effect OE1 - 30%</b><span>Opalescencia incisal azulada.</span></li>
+              <li><b>IPS e.max Ceram Incisal I1 - 24%</b><span>Valor alto sin efecto tiza.</span></li>
+              <li><b>IPS e.max Ceram Transpa blue - 24%</b><span>Profundidad fria del borde.</span></li>
+              <li><b>IPS e.max Ceram Incisal I2 - 22%</b><span>Detalle interno y transicion incisal.</span></li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="action-panel">
+          <strong>Salida clinica</strong>
+          <p>Exportar PDF con fotos, guia, valores CIELAB, Delta E, criterio de material, receta y nivel de calibracion.</p>
+          <button class="secondary-action" type="button" data-go="library">Abrir biblioteca</button>
+        </section>
+      </section>
+
+      <section class="screen library-screen" data-screen="library">
+        <header class="screen-header">
+          <button class="back-button" type="button" data-go="home" aria-label="Volver"></button>
+          <div><p class="eyebrow">Base privada</p><h2>Biblioteca CeramIQ</h2></div>
+        </header>
+
+        <section class="library-grid">
+          <article><span class="chip">Material</span><strong>IPS e.max Ceram</strong><p>Masas, familias opticas y reglas por grosor.</p></article>
+          <article><span class="chip">Color</span><strong>BigColor Cera</strong><p>Tarjeta gris, CIELAB trazable y control de luz.</p></article>
+          <article><span class="chip">Casos</span><strong>Criterios validados</strong><p>Aprendizaje por sustrato, cemento y resultado real.</p></article>
+          <article><span class="chip">Motor</span><strong>Respuesta experta</strong><p>Diagnostico optico, material, limites del caso y receta por tercios.</p></article>
+        </section>
+
+        <section class="notes-panel">
+          <strong>Regla de seguridad</strong>
+          <p>Si falta guia, gris calibrado o polarizada, CeramIQ no declara medicion absoluta: marca el caso como estimado.</p>
+        </section>
+      </section>
+    </main>
+    <script src="./script.js"></script>
+  </body>
+</html>

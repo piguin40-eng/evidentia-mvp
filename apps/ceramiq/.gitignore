@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+.venv-ceramiq/
+venv/
+data/
+uploads/
+*.sqlite
+*.sqlite3
+*.db
+.playwright-cli/
+output/
+atlas_records/
+ceramiq-server.log
+logs/

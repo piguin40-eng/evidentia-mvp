@@ -23,3 +23,16 @@ services:
         value: gpt-4.1-mini
       - key: OPENAI_API_KEY
         sync: false
+
+  - type: web
+    name: ceramiq
+    runtime: python
+    plan: starter
+    rootDir: apps/ceramiq
+    buildCommand: pip install --no-cache-dir -r requirements.txt && python -m py_compile server.py
+    startCommand: python server.py
+    healthCheckPath: /api/healthz
+    autoDeploy: true
+    envVars:
+      - key: CERAMIQ_ENV
+        value: production
