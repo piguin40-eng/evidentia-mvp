@@ -329,7 +329,7 @@ function renderCeramiqAnswer(result) {
   if (title) title.textContent = "CeramIQ responde sobre " + material + ".";
   if (body) {
     body.textContent = firstThird
-      ? firstThird + " Incluye criterio de material y receta con 4 masas por tercio cuando procede. " + (missing.length ? "Atencion: falta o queda debil " + missing.join(", ") + "; declararlo como estimado en clase." : "Protocolo completo para explicar en clase con guia, gris y polarizada.")
+      ? firstThird + " Incluye criterio de material y receta con 4 masas por tercio cuando procede. " + (missing.length ? "Atencion: falta o queda debil " + missing.join(", ") + "; declararlo como estimado en la revision del caso." : "Protocolo completo para revision ceramica con guia, gris y polarizada.")
       : "No hay tercios calculados todavia. Sube fotos del caso y ejecuta Analizar caso.";
   }
 }
