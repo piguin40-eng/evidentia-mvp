@@ -726,7 +726,7 @@ function renderQuery() {
 function renderChat() {
   const localPanel = renderLocalFirstPanel();
   return '<section class="card chat-shell">' +
-    '<div class="section-head"><div><span class="eyebrow">Chat</span><h1>Pregunta</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
+    '<div class="section-head"><div><span class="eyebrow">Yolito chat</span><h1>Pregunta a Yolito</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
     '<div class="chat-layout">' +
     '<div class="chat-thread" id="knowledgeChatThread">' + state.chatMessages.map(chatBubble).join("") + '</div>' +
     '<aside class="chat-prompts">' + localPanel + '<h3>Preguntas utiles</h3>' +
@@ -737,7 +737,7 @@ function renderChat() {
     chatPrompt("Que conocimiento tengo sobre este tema?") +
     '</aside></div>' +
     '<form class="chat-form" id="knowledgeChatForm">' +
-    '<input id="knowledgeChatInput" autocomplete="off" placeholder="Ej: que casos, proyectos o aprendizajes parecidos tengo guardados?">' +
+    '<input id="knowledgeChatInput" autocomplete="off" placeholder="Ej: que masa uso si el incisal cae a gris y falta valor?">' +
     '<button class="primary" type="submit">Preguntar</button>' +
     '</form></section>';
 }
@@ -1227,7 +1227,7 @@ function chatPrompt(text) {
 
 function chatBubble(message) {
   const sourceHtml = message.sources && message.sources.length
-    ? '<div class="chat-sources">' + message.sources.map((record) => '<button data-select-case="' + escapeHtml(record.id) + '" type="button"><strong>' + escapeHtml(record.patientCode) + '</strong><span>' + escapeHtml(record.recordType) + ' · ' + escapeHtml(record.domain) + '</span></button>').join("") + '</div>'
+    ? '<details class="chat-sources"><summary>Memoria usada · ' + message.sources.length + '</summary>' + message.sources.map((record) => '<button data-select-case="' + escapeHtml(record.id) + '" type="button"><strong>' + escapeHtml(record.patientCode) + '</strong><span>' + escapeHtml(record.recordType) + ' · ' + escapeHtml(record.domain) + '</span></button>').join("") + '</details>'
     : "";
   return '<article class="chat-bubble ' + escapeHtml(message.role) + '"><p>' + escapeHtml(message.text).replaceAll("\n", "<br>") + '</p>' + sourceHtml + '</article>';
 }

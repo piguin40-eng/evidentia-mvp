@@ -696,6 +696,16 @@ CHAT_STOP_WORDS = {
     "guardado", "conocimiento", "documento", "documentos", "caso", "casos", "fuente", "fuentes",
 }
 
+YOLITO_CHAT_TERMS = {
+    "yolito", "ceramica", "cerámica", "ceram", "estratificacion", "estratificación",
+    "masa", "masas", "dentina", "deep", "opal", "opalescente", "opalescentes",
+    "incisal", "cervical", "tercio", "tercios", "mamelon", "mamelones",
+    "halo", "translucido", "translúcido", "clear", "neutral", "ti1", "ti2", "ti3",
+    "valor", "croma", "sustrato", "tetraciclina", "tetraciclinas", "discromico",
+    "discromía", "feldespática", "feldespatica", "carilla", "carillas", "emax",
+    "e.max", "ips", "bigcolor", "cielab", "polarizada",
+}
+
 
 def chat_terms(question: str) -> list[str]:
     terms = []
@@ -774,10 +784,113 @@ def extract_inventory_items(text: str, limit: int = 6) -> list[str]:
     return items
 
 
+def is_yolito_chat(question: str, chunks: list[dict]) -> bool:
+    question_terms = set(chat_terms(question))
+    question_low = question.lower()
+    if question_terms & YOLITO_CHAT_TERMS or any(term in question_low for term in YOLITO_CHAT_TERMS):
+        return True
+    for chunk in chunks[:8]:
+        metadata = chunk.get("metadata", {})
+        haystack = " ".join(
+            str(metadata.get(key) or "")
+            for key in ("record_type", "source_name", "domain", "patient_code")
+        ).lower()
+        if "yolito" in haystack or "ceram" in haystack:
+            return True
+    return False
+
+
+def yolito_source_notes(chunks: list[dict]) -> list[str]:
+    notes: list[str] = []
+    for chunk in chunks[:8]:
+        text = re.sub(r"\s+", " ", chunk.get("text") or "").strip()
+        low = text.lower()
+        candidates = []
+        if "sustrato determina" in low or "sustrato oscuro" in low:
+            candidates.append("El sustrato manda: si hay discromía fuerte, la elección del material debe bloquear antes de buscar estética.")
+        if "dixplaxias" in low or "displasias" in low or "tetracicl" in low:
+            candidates.append("En tinciones intensas o displasias, no conviene prometer feldespática directa sin estrategia de bloqueo.")
+        if "deep dentina" in low or "deep dentin" in low:
+            candidates.append("En cervical, usar Deep Dentin del color elegido con control de croma; Orange/Pink solo si ayuda a suavizar transición gingival.")
+        if "opalescentes opal1" in low or "opal1" in low:
+            candidates.append("En incisal, trabajar opalescentes Opal 1-4, Blue/Violet y mamelones solo si el caso pide halo/profundidad.")
+        if "clear" in low and ("ti1" in low or "neutral" in low):
+            candidates.append("El cierre de esmalte puede ir con Clear, TI1/TI2/TI3 o Neutral; si el borde ya está gris, cuidado con pasarte de translúcidos neutros.")
+        if "bigcolor cera" in low or "polarizada" in low:
+            candidates.append("Sin foto polarizada y BigColor Cera gris, CIELAB/Delta E deben tratarse como estimados, no medición clínica absoluta.")
+        for candidate in candidates:
+            if candidate not in notes:
+                notes.append(candidate)
+            if len(notes) >= 4:
+                return notes
+    return notes
+
+
+def local_yolito_synthesize(question: str, chunks: list[dict]) -> str:
+    question_low = question.lower()
+    notes = yolito_source_notes(chunks)
+    wants_recipe = any(term in question_low for term in (
+        "receta", "masa", "masas", "estrat", "tercio", "incisal", "cervical",
+        "a1", "a2", "b1", "b2", "valor", "croma",
+    ))
+    wants_material = any(term in question_low for term in (
+        "material", "sustrato", "tetracicl", "tincion", "tinción", "discrom",
+        "bloquear", "feldes", "zircon", "emax",
+    ))
+
+    if wants_recipe:
+        answer = [
+            "Yolito: no te voy a sacar una lista de archivos; te respondo con criterio.",
+            "",
+            "Para un caso tipo A2 con incisal gris y bajo valor, el problema principal suele ser valor/opalescencia, no añadir más gris. Yo evitaría cargar el borde con translúcidos neutros desde el principio.",
+            "",
+            "Cervical: base con dentina/deep dentin del color elegido, controlando croma. Si el cuello se ve pesado, baja saturación y suaviza transición; Orange/Pink solo tendría sentido si hay que unir mejor con tejido gingival.",
+            "",
+            "Medio: cuerpo luminoso con dentina del tono objetivo y transición fina hacia incisal. Aquí no buscaría efectos fuertes; buscaría estabilidad de valor.",
+            "",
+            "Incisal: primero subiría valor con opalescentes más claros; después modularía halo/profundidad con Blue/Violet o mamelones en dosis bajas. Clear, TI1/TI2/TI3 o Neutral solo como cierre, con cuidado si el borde ya cae a gris.",
+            "",
+            "Sin foto polarizada, guía y BigColor Cera gris, esto es orientación de estratificación, no receta clínica cerrada con porcentajes absolutos.",
+        ]
+        if notes:
+            answer.append("")
+            answer.append("Memoria Yolito usada: " + " ".join(notes[:2]))
+        return "\n".join(answer)
+
+    if wants_material:
+        answer = [
+            "Yolito: aquí decide el sustrato antes que la cerámica bonita.",
+            "",
+            "Si el diente está claro o semiclaro y favorable, puedes plantear feldespática sobre platino/refractario o una opción tipo disilicato translúcido según resistencia y espesor. Si hay tinción mínima, el LT puede ayudar a bloquear un poco.",
+            "",
+            "Si hay tetraciclinas, discromía fuerte o sustrato muy negativo, no vendería una solución fina y translúcida como si fuera segura. Necesitas bloqueo: MO para tinciones moderadas, HO para muy oscuras, o incluso zirconio si el caso lo exige; después estratificación cerámica para recuperar vida.",
+            "",
+            "Regla dura: si un central está discromico y los demás son positivos, ese diente problemático condiciona el material del conjunto para no acabar con valores incompatibles.",
+        ]
+        if notes:
+            answer.append("")
+            answer.append("Memoria Yolito usada: " + " ".join(notes[:2]))
+        return "\n".join(answer)
+
+    if notes:
+        return (
+            "Yolito: con lo que tengo en memoria, el criterio sería este: "
+            + " ".join(notes[:3])
+            + "\n\nSi quieres una receta cerrada por tercios, necesito al menos foto con guía, polarizada y BigColor Cera gris; sin eso solo puedo dar orientación técnica."
+        )
+    return (
+        "Yolito: no tengo suficiente contexto clínico para cerrar una respuesta con rigor. "
+        "Pregúntame con material, sustrato, color objetivo, fotos disponibles y zona cervical/medio/incisal, y te contesto como receta técnica, no como buscador de archivos."
+    )
+
+
 def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
     terms = chat_terms(question)
     inventory_items: list[str] = []
     ranked: list[tuple[int, int, str]] = []
+
+    if is_yolito_chat(question, chunks):
+        return local_yolito_synthesize(question, chunks)
 
     for chunk_index, chunk in enumerate(chunks[:8]):
         text = chunk.get("text") or ""
@@ -811,7 +924,7 @@ def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
         if len(selected) >= 3:
             break
 
-    if inventory_items and ("document" in question.lower() or "archivo" in question.lower() or len(selected) < 2):
+    if inventory_items and ("document" in question.lower() or "archivo" in question.lower()):
         intro = "Tengo localizadas estas fuentes relacionadas:"
         return intro + "\n" + "\n".join(f"- {item}" for item in inventory_items[:6])
 

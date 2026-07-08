@@ -157,11 +157,11 @@
     </footer>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260707-dictation-feedback"></script>
+    <script src="./app.js?v=20260708-yolito-chat"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260708-stable-mobile")
+          navigator.serviceWorker.register("./sw.js?v=20260708-yolito-chat")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });
