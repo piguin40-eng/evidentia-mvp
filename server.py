@@ -19,6 +19,8 @@ import shutil
 import sqlite3
 import subprocess
 import base64
+import tarfile
+import tempfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +41,7 @@ DERIVED_DIR = DATA_DIR / "derived"
 AUDIO_DERIVED_DIR = DERIVED_DIR / "audio"
 TRANSCRIPT_DIR = DERIVED_DIR / "transcripts"
 EXPORT_DIR = DATA_DIR / "exports"
+BACKUP_DIR = DATA_DIR / "backups" / "render-node"
 CHROMA_COLLECTION = "evidentia_knowledge"
 ENABLE_CHROMA = os.getenv("EVIDENTIA_ENABLE_CHROMA", "").strip().lower() in {"1", "true", "yes"}
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
@@ -537,6 +540,67 @@ def rag_stats() -> dict:
         stats["records"] = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
         stats["yolitoRecords"] = conn.execute("SELECT COUNT(*) FROM records WHERE record_type = ?", ("Yolito Ceram source",)).fetchone()[0]
     return stats
+
+
+def create_runtime_backup() -> dict:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    archive = BACKUP_DIR / f"evidentia-data-{stamp}.tar.gz"
+    retention = int(os.getenv("EVIDENTIA_BACKUP_RETENTION", "14"))
+
+    with tempfile.TemporaryDirectory(prefix="evidentia-runtime-backup.") as staging_name:
+        staging = Path(staging_name)
+        staged_data = staging / "data"
+        staged_data.mkdir(parents=True, exist_ok=True)
+
+        source = sqlite3.connect(DB_PATH)
+        target = sqlite3.connect(staged_data / "evidentia.sqlite")
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+
+        for item in ("uploads", "rag", "derived", "exports"):
+            source_path = DATA_DIR / item
+            target_path = staged_data / item
+            if source_path.exists():
+                shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+            else:
+                target_path.mkdir(parents=True, exist_ok=True)
+
+        with tarfile.open(archive, "w:gz") as tar:
+            tar.add(staged_data, arcname="data", recursive=True)
+
+        staged_db = staged_data / "evidentia.sqlite"
+        with sqlite3.connect(staged_db) as conn:
+            records = conn.execute("select count(*) from records").fetchone()[0]
+            chunks = conn.execute("select count(*) from rag_chunks").fetchone()[0]
+            evidence = conn.execute("select count(*) from evidence").fetchone()[0]
+
+        chunk_ids_path = staged_data / "rag" / "vector" / "chunk_ids.json"
+        compact_vector_ids = 0
+        if chunk_ids_path.exists():
+            compact_vector_ids = len(json.loads(chunk_ids_path.read_text(encoding="utf-8")))
+
+    archives = sorted(BACKUP_DIR.glob("evidentia-data-*.tar.gz"), key=lambda path: path.stat().st_mtime, reverse=True)
+    removed = 0
+    for stale in archives[retention:]:
+        stale.unlink()
+        removed += 1
+
+    return {
+        "ok": True,
+        "archive": str(archive),
+        "sizeBytes": archive.stat().st_size,
+        "records": records,
+        "sqliteChunks": chunks,
+        "evidence": evidence,
+        "compactVectorChunkIds": compact_vector_ids,
+        "retention": retention,
+        "removed": removed,
+        "createdAt": stamp,
+    }
 
 
 def ai_status() -> dict:
@@ -1407,6 +1471,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.write_json(query_rag(str(payload.get("question") or "")))
             except Exception as exc:
                 self.write_json({"error": str(exc)}, status=400)
+            return
+        if parsed.path == "/api/admin/backup":
+            try:
+                self.write_json(create_runtime_backup(), status=201)
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
             return
         self.write_json({"error": "not found"}, status=404)
 
