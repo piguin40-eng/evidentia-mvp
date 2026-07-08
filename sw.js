@@ -1,13 +1,14 @@
-const CACHE_NAME = "evidentia-shell-v35-command-deck";
+const CACHE_NAME = "evidentia-shell-v36-stable-mobile";
+const STABLE_URL = "https://evidentia-ytra.onrender.com/";
 const SHELL_ASSETS = [
-  "./reset.html?v=20260629-mobile-shell",
-  "./website.css?v=20260702-operating-contract",
-  "./styles.css?v=20260702-command-deck",
-  "./app.js?v=20260702-command-deck",
-  "./manifest.webmanifest?v=20260628-mobile-app",
+  "./reset.html?v=20260708-stable-mobile",
+  "./website.css?v=20260708-stable-mobile",
+  "./styles.css?v=20260708-stable-mobile",
+  "./app.js?v=20260708-stable-mobile",
+  "./manifest.webmanifest?v=20260708-stable-mobile",
   "./icon.svg?v=20260624-mirror-e",
-  "./assets/icons/icon-192.png?v=20260628-mobile-app",
-  "./assets/icons/icon-512.png?v=20260628-mobile-app",
+  "./assets/icons/icon-192.png?v=20260708-stable-mobile",
+  "./assets/icons/icon-512.png?v=20260708-stable-mobile",
   "./assets/evidentia/evidentia-reference-hero.mp4?v=20260618-reference-video",
   "./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260618-reference-video"
 ];
@@ -46,14 +47,16 @@ self.addEventListener("fetch", event => {
               main{max-width:440px}
               h1{font-size:24px;margin:0 0 12px}
               p{color:#b9b3aa;line-height:1.45;margin:0 0 16px}
-              a{color:#f5f2eb}
+              a{color:#070809;background:#f5f2eb;border:0;border-radius:8px;display:block;font-weight:700;margin:10px 0 0;padding:14px 16px;text-align:center;text-decoration:none;width:100%}
+              .secondary{background:transparent;border:1px solid #3c414b;color:#f5f2eb}
             </style>
           </head>
           <body>
             <main>
               <h1>Evidentia no puede conectar</h1>
-              <p>El nodo local o el enlace movil temporal no esta disponible ahora mismo. Abre el enlace movil mas reciente o reinicia el acceso movil desde el Mac.</p>
-              <p><a href="./reset.html">Limpiar acceso local</a></p>
+              <p>Este acceso temporal ha caducado. Usa el acceso estable de curso para trabajar sin depender del tunel del Mac.</p>
+              <a href="${STABLE_URL}">Abrir Evidentia estable</a>
+              <a class="secondary" href="./reset.html?v=20260708-stable-mobile">Limpiar este acceso antiguo</a>
             </main>
           </body>
         </html>`,
@@ -74,14 +77,14 @@ self.addEventListener("fetch", event => {
   if (isFreshDocument) {
     event.respondWith(
       fetch(request, { cache: "no-store" })
-        .catch(() => caches.match(request))
         .then(response => response || fallbackResponse())
+        .catch(() => fallbackResponse())
     );
     return;
   }
 
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: "no-store" })
       .then(response => {
         if (!response.ok || response.redirected) return response;
         const copy = response.clone();

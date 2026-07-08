@@ -8,10 +8,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Evidentia" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20260628-mobile-app" />
+    <link rel="manifest" href="./manifest.webmanifest?v=20260708-stable-mobile" />
     <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
-    <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260628-mobile-app" />
-    <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260628-mobile-app" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260708-stable-mobile" />
+    <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260708-stable-mobile" />
     <link rel="stylesheet" href="./styles.css?v=20260707-knowledge-map" />
     <style>
       @media (max-width: 720px) {
@@ -116,7 +116,7 @@
         <input id="globalSearch" type="search" placeholder="Buscar casos, fotos, videos, PDF, notas, criterios..." />
         <kbd>⌘K</kbd>
       </div>
-      <a class="install-app site-link" href="./reset.html?v=20260629-mobile-shell">Actualizar</a>
+      <a class="install-app site-link" href="./reset.html?v=20260708-stable-mobile">Actualizar</a>
       <a class="install-app site-link" href="./website.html?v=20260622-good-web-restore">Web</a>
       <button class="install-app" id="installApp" type="button">Instalar app</button>
       <div class="ai-status" id="aiStatus" data-state="idle"><span class="pulse"></span><span>IA en reposo</span></div>
@@ -161,7 +161,7 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260704-knowledge-save")
+          navigator.serviceWorker.register("./sw.js?v=20260708-stable-mobile")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });
