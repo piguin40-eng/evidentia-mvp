@@ -12,7 +12,7 @@
     <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260708-stable-mobile" />
     <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260708-stable-mobile" />
-    <link rel="stylesheet" href="./styles.css?v=20260707-knowledge-map" />
+    <link rel="stylesheet" href="./styles.css?v=20260708-mobile-header" />
     <style>
       @media (max-width: 720px) {
         html,
@@ -23,8 +23,13 @@
         }
         .app-topbar {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 10px;
+          grid-template-columns: minmax(108px, auto) minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+        }
+        .brand {
+          grid-column: 1;
+          grid-row: 1;
         }
         .brand,
         .case-pill,
@@ -36,15 +41,31 @@
         }
         .global-search {
           grid-column: 1 / -1;
+          grid-row: 3;
           min-width: 0;
         }
         .case-pill {
           grid-column: 1 / -1;
+          grid-row: 2;
           width: 100%;
           justify-content: flex-start;
         }
         .site-link {
+          display: inline-flex;
+        }
+        .site-link[href*="reset"] {
           display: none;
+        }
+        .ai-status {
+          grid-column: 2;
+          grid-row: 1;
+          justify-content: center;
+          white-space: nowrap;
+          font-size: 11px;
+        }
+        .web-link {
+          grid-column: 3;
+          grid-row: 1;
         }
         .app-work,
         .evidentia-home,
@@ -102,9 +123,6 @@
           aspect-ratio: 36 / 53;
           margin: 0 0 18px;
         }
-        #installApp {
-          display: none;
-        }
       }
     </style>
   </head>
@@ -117,9 +135,9 @@
         <kbd>⌘K</kbd>
       </div>
       <a class="install-app site-link" href="./reset.html?v=20260708-stable-mobile">Actualizar</a>
-      <a class="install-app site-link" href="./website.html?v=20260622-good-web-restore">Web</a>
+      <a class="install-app site-link web-link" href="./website.html?v=20260622-good-web-restore">Web</a>
       <button class="install-app" id="installApp" type="button">Instalar app</button>
-      <div class="ai-status" id="aiStatus" data-state="idle"><span class="pulse"></span><span>IA en reposo</span></div>
+      <div class="ai-status" id="aiStatus" data-state="idle"><span class="pulse"></span><span>Conectado a IA</span></div>
     </header>
 
     <nav class="app-rail" aria-label="Secciones">

@@ -1,9 +1,9 @@
-const CACHE_NAME = "evidentia-shell-v37-yolito-chat";
+const CACHE_NAME = "evidentia-shell-v38-mobile-header";
 const STABLE_URL = "https://evidentia-ytra.onrender.com/";
 const SHELL_ASSETS = [
   "./reset.html?v=20260708-stable-mobile",
   "./website.css?v=20260708-stable-mobile",
-  "./styles.css?v=20260708-stable-mobile",
+  "./styles.css?v=20260708-mobile-header",
   "./app.js?v=20260708-yolito-chat",
   "./manifest.webmanifest?v=20260708-stable-mobile",
   "./icon.svg?v=20260624-mirror-e",

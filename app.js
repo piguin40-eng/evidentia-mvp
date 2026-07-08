@@ -187,7 +187,8 @@ async function persistRecord(record) {
 
 function aiStatusLabel() {
   if (state.aiProvider && state.aiProvider.active) return "IA activa";
-  return "Verificable local";
+  if (state.apiOnline) return "Conectado a IA";
+  return "IA local";
 }
 
 function setAiState(stateName, label) {
