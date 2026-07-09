@@ -1768,3 +1768,54 @@ input:focus, select:focus, textarea:focus {
   .pipeline-card { min-height: 430px; }
   .app-trace { flex-wrap: wrap; height: auto; padding: 10px 12px; }
 }
+
+@media (max-width: 720px) {
+  .app-topbar {
+    display: grid !important;
+    grid-template-columns: minmax(104px, max-content) minmax(0, 1fr) max-content !important;
+    grid-auto-flow: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+  .app-topbar .brand {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    max-width: 112px !important;
+  }
+  .app-topbar .brand-word {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .app-topbar .ai-status {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+  }
+  .app-topbar .ai-status span:last-child {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+  .app-topbar .web-link {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    display: inline-flex !important;
+  }
+  .app-topbar .case-pill {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+  }
+  .app-topbar .global-search {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    width: 100% !important;
+  }
+  .app-topbar .site-link[href*="reset"],
+  .app-topbar #installApp {
+    display: none !important;
+  }
+}
