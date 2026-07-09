@@ -12,7 +12,7 @@
     <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260708-stable-mobile" />
     <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260708-stable-mobile" />
-    <link rel="stylesheet" href="./styles.css?v=20260709-woman-photo-lock" />
+    <link rel="stylesheet" href="./styles.css?v=20260709-woman-photo-mobile-full" />
     <style>
       @media (max-width: 720px) {
         html,
@@ -119,12 +119,12 @@
         .hero-visual {
           display: block;
           order: -1;
-          min-height: min(62vh, 520px);
+          min-height: min(70vh, 620px);
           aspect-ratio: 36 / 53;
-          margin: 0 0 18px;
+          margin: 0;
           background:
             linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.18)),
-            url("./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-lock") center top / cover no-repeat,
+            url("./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-mobile-full") center top / cover no-repeat,
             #020404;
         }
       }
@@ -179,11 +179,11 @@
     </footer>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260709-woman-photo-lock"></script>
+    <script src="./app.js?v=20260709-woman-photo-mobile-full"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260709-woman-photo-lock")
+          navigator.serviceWorker.register("./sw.js?v=20260709-woman-photo-mobile-full")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });

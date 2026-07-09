@@ -1,16 +1,16 @@
-const CACHE_NAME = "evidentia-shell-v39-woman-photo-lock";
+const CACHE_NAME = "evidentia-shell-v40-woman-photo-mobile-full";
 const STABLE_URL = "https://evidentia-ytra.onrender.com/";
 const SHELL_ASSETS = [
   "./reset.html?v=20260708-stable-mobile",
   "./website.css?v=20260708-stable-mobile",
-  "./styles.css?v=20260709-woman-photo-lock",
-  "./app.js?v=20260709-woman-photo-lock",
+  "./styles.css?v=20260709-woman-photo-mobile-full",
+  "./app.js?v=20260709-woman-photo-mobile-full",
   "./manifest.webmanifest?v=20260708-stable-mobile",
   "./icon.svg?v=20260624-mirror-e",
   "./assets/icons/icon-192.png?v=20260708-stable-mobile",
   "./assets/icons/icon-512.png?v=20260708-stable-mobile",
-  "./assets/evidentia/evidentia-reference-hero.mp4?v=20260709-woman-photo-lock",
-  "./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-lock"
+  "./assets/evidentia/evidentia-reference-hero.mp4?v=20260709-woman-photo-mobile-full",
+  "./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-mobile-full"
 ];
 
 self.addEventListener("install", event => {
