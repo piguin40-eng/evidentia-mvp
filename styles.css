@@ -343,14 +343,21 @@ body[data-case]:not([data-case=""]) .case-pill .dot { background: var(--ok); }
   overflow: hidden;
   border: 1px solid rgba(150, 242, 202, 0.42);
   border-radius: var(--r-md);
-  background: #020404;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.18)),
+    url("./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-lock") center / cover no-repeat,
+    #020404;
   box-shadow: 0 22px 80px rgba(0, 0, 0, 0.46);
 }
 .hero-video {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
+  opacity: 0.68;
+  filter: brightness(1.12) contrast(1.08) saturate(1.08);
 }
 .hero-cube-canvas {
   position: absolute;
@@ -1674,18 +1681,18 @@ input:focus, select:focus, textarea:focus {
     grid-template-columns: 1fr;
   }
   .evidentia-hero {
-    width: min(300px, calc(100vw - 56px)) !important;
-    max-width: min(300px, calc(100vw - 56px)) !important;
+    width: 100% !important;
+    max-width: 100% !important;
     min-height: auto;
-    padding: 22px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
     grid-template-columns: minmax(0, 1fr) !important;
     overflow: visible;
   }
   .evidentia-home {
-    width: min(300px, calc(100vw - 56px));
-    max-width: min(300px, calc(100vw - 56px));
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     overflow-x: hidden;
   }
@@ -1729,9 +1736,10 @@ input:focus, select:focus, textarea:focus {
   .hero-visual {
     display: block;
     order: -1;
-    min-height: 260px;
+    min-height: min(62vh, 520px);
     aspect-ratio: 36 / 53;
     margin: 0 0 18px;
+    background-position: center top;
   }
   .hero-video-brand {
     top: 10px;

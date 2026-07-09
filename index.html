@@ -12,7 +12,7 @@
     <link rel="icon" href="./icon.svg?v=20260624-mirror-e" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="192x192" href="./assets/icons/icon-192.png?v=20260708-stable-mobile" />
     <link rel="apple-touch-icon" sizes="512x512" href="./assets/icons/icon-512.png?v=20260708-stable-mobile" />
-    <link rel="stylesheet" href="./styles.css?v=20260709-mobile-header-restore" />
+    <link rel="stylesheet" href="./styles.css?v=20260709-woman-photo-lock" />
     <style>
       @media (max-width: 720px) {
         html,
@@ -89,8 +89,8 @@
         .knowledge-routing-band,
         .video-memory-band,
         .work-grid {
-          width: min(300px, calc(100vw - 56px));
-          max-width: min(300px, calc(100vw - 56px));
+          width: 100%;
+          max-width: 100%;
           margin-left: 0;
           margin-right: 0;
         }
@@ -119,9 +119,13 @@
         .hero-visual {
           display: block;
           order: -1;
-          min-height: 260px;
+          min-height: min(62vh, 520px);
           aspect-ratio: 36 / 53;
           margin: 0 0 18px;
+          background:
+            linear-gradient(180deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.18)),
+            url("./assets/evidentia/evidentia-reference-hero-poster.jpg?v=20260709-woman-photo-lock") center top / cover no-repeat,
+            #020404;
         }
       }
     </style>
@@ -175,11 +179,11 @@
     </footer>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="./app.js?v=20260709-mobile-header-restore"></script>
+    <script src="./app.js?v=20260709-woman-photo-lock"></script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
-          navigator.serviceWorker.register("./sw.js?v=20260709-mobile-header-restore")
+          navigator.serviceWorker.register("./sw.js?v=20260709-woman-photo-lock")
             .then(function (registration) { registration.update().catch(function () {}); })
             .catch(function () {});
         });

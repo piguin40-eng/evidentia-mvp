@@ -1,5 +1,5 @@
 const STORAGE_KEY = "evidentia_records_v2";
-const HERO_VIDEO_VERSION = "20260618-reference-video";
+const HERO_VIDEO_VERSION = "20260709-woman-photo-lock";
 const BRAND_WORD = 'EVID&#398;NTIA';
 const ALL_VIEWS = ["intake", "entities", "graph", "chat", "intelligence", "query", "pack", "connectors", "cases", "consent", "storage"];
 const VECTOR_CLUSTERS = [
