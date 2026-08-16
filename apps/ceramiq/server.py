@@ -640,6 +640,9 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ceramic IQ - acceso</title>
+    <link rel="manifest" href="/site.webmanifest?v=app-icons-20260816" />
+    <link rel="apple-touch-icon" href="/assets/icons/ceramic-iq-icon-180.png?v=app-icons-20260816" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/ceramic-iq-icon-192.png?v=app-icons-20260816" />
     <style>
       :root {{ color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
       body {{ min-height: 100vh; margin: 0; display: grid; place-items: center; background: #09110f; color: #f4fbf8; padding: 24px; }}
