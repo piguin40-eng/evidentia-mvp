@@ -1,0 +1,21 @@
+{
+  "name": "BigColor PREP 2",
+  "short_name": "BC PREP",
+  "description": "Visor BigColor PREP 2 para control de preparacion y espesores.",
+  "start_url": "/BigColor_PREP_2_APP.html",
+  "display": "standalone",
+  "background_color": "#080a0c",
+  "theme_color": "#080a0c",
+  "icons": [
+    {
+      "src": "/assets/icons/bigcolor-prep-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icons/bigcolor-prep-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

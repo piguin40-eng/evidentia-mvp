@@ -716,6 +716,9 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/login.html":
             self.serve_login()
             return
+        if parsed.path == "/site.webmanifest" or parsed.path.startswith("/assets/icons/"):
+            super().do_GET()
+            return
         if not self.require_auth():
             return
         super().do_GET()

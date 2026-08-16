@@ -1,0 +1,21 @@
+{
+  "name": "Ceramic IQ",
+  "short_name": "Ceramic IQ",
+  "description": "Visor clinico de analisis fotografico para ceramica dental.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101716",
+  "theme_color": "#101716",
+  "icons": [
+    {
+      "src": "/assets/icons/ceramic-iq-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/icons/ceramic-iq-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
