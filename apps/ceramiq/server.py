@@ -584,6 +584,10 @@ def valid_credentials(username, password):
 
 
 class CeramIQHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def require_auth(self):
         if not BASIC_AUTH_ENABLED:
             return True
