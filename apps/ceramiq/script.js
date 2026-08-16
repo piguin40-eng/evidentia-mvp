@@ -149,7 +149,7 @@ function renderSavedMedia() {
       caseAudioPreview.style.display = "none";
     }
   }
-  if (cameraNote) cameraNote.textContent = savedPhotos.length ? savedPhotos.length + " fotos guardadas en este caso." : "Arnes activo: cada foto se analiza con CeramIQ. Sin tarjeta gris, guia y polarizada, CIELAB y Delta E quedan estimados.";
+  if (cameraNote) cameraNote.textContent = savedPhotos.length ? savedPhotos.length + " fotos listas para Ceramic IQ." : "Cada foto entra al visor Ceramic IQ con rol de captura. Sin tarjeta gris, guia y polarizada, CIELAB y Delta E quedan estimados.";
 }
 
 function syncCompletedShotsFromPhotos() {
@@ -220,13 +220,13 @@ function buildCaseFormData() {
   data.append("material_system", JSON.stringify(selectedMaterialPayload()));
   if (caseDescription) data.append("case_description", caseDescription.value.trim());
   if (savedAudio && savedAudio.blob) data.append("case_audio", savedAudio.blob, savedAudio.name || "ceramiq-brief.webm");
-  data.append("engine", "CeramIQ Clinical RAG");
+  data.append("engine", "Ceramic IQ");
   data.append("policy", "ceramiq_ceramic_only");
   return data;
 }
 async function indexCurrentCase() {
   if (!savedPhotos.length) {
-    if (cameraNote) cameraNote.textContent = "Sube al menos una foto antes de indexar el caso en el Atlas.";
+    if (cameraNote) cameraNote.textContent = "Sube al menos una foto antes de guardar el caso.";
     showScreen("capture");
     return;
   }
@@ -237,10 +237,10 @@ async function indexCurrentCase() {
     if (!response.ok) throw new Error("Index endpoint failed");
     const result = await response.json();
     setSavedState("Indexado");
-    if (cameraNote) cameraNote.textContent = "Caso indexado en Atlas: " + result.case_id + ". Ya puedes analizarlo o vaciar el caso local.";
+    if (cameraNote) cameraNote.textContent = "Caso guardado: " + result.case_id + ". Ya puedes analizar fotos o vaciar el caso local.";
   } catch (error) {
     setSavedState("No indexado");
-    if (cameraNote) cameraNote.textContent = "No se pudo indexar. Revisa que el servidor CeramIQ este abierto.";
+    if (cameraNote) cameraNote.textContent = "No se pudo guardar. Revisa que el servidor Ceramic IQ este abierto.";
   } finally {
     if (indexCase) indexCase.disabled = false;
   }
@@ -254,11 +254,11 @@ async function sendToClinicalHarness() {
   const data = buildCaseFormData();
 
   try {
-    if (engineNote) engineNote.textContent = "Analizando fotos reales, CIELAB por tercios y criterio ceramico...";
+    if (engineNote) engineNote.textContent = "Analizando fotos reales, calidad de captura, CIELAB por tercios y criterio ceramico...";
     const response = await fetch("/api/ceramiq/analyze", { method: "POST", body: data });
     if (!response.ok) throw new Error("Clinical endpoint failed");
     latestClinicalResult = await response.json();
-    if (engineNote) engineNote.textContent = "Respuesta recibida desde CeramIQ. Ninguna IA generica ha procesado el caso.";
+    if (engineNote) engineNote.textContent = "Informe recibido desde Ceramic IQ. El caso queda trazado por fotos, roles y protocolo.";
     renderClinicalResult(latestClinicalResult);
     showScreen("analysis");
   } catch (error) {
@@ -298,7 +298,7 @@ function renderClinicalResult(result) {
     const body = recipeHero.querySelector("p");
     const pill = recipeHero.querySelector(".pill");
     if (pill) pill.textContent = result.calibration_status === "estimated_from_uploaded_pixels" ? "Analisis pixel real" : "Estimacion limitada";
-    if (title) title.textContent = "Respuesta " + (result.material_system || "CeramIQ") + " desde fotos subidas";
+    if (title) title.textContent = "Informe " + (result.material_system || "Ceramic IQ") + " desde fotos subidas";
     if (body) body.textContent = result.warning;
   }
   if (recipeStack && result.recipe) {
@@ -326,10 +326,10 @@ function renderCeramiqAnswer(result) {
   const missing = checks.filter((check) => !check.ok).map((check) => check.label.toLowerCase());
   const firstThird = result.thirds && result.thirds[0] ? result.thirds[0].diagnosis : "";
   const material = result.material_system || "el sistema seleccionado";
-  if (title) title.textContent = "CeramIQ responde sobre " + material + ".";
+  if (title) title.textContent = "Ceramic IQ responde sobre " + material + ".";
   if (body) {
     body.textContent = firstThird
-      ? firstThird + " Incluye criterio de material y receta con 4 masas por tercio cuando procede. " + (missing.length ? "Atencion: falta o queda debil " + missing.join(", ") + "; declararlo como estimado en la revision del caso." : "Protocolo completo para revision ceramica con guia, gris y polarizada.")
+      ? firstThird + " Incluye criterio de material y receta con 4 masas por tercio cuando procede. " + (missing.length ? "Atencion: falta o queda debil " + missing.join(", ") + "; Ceramic IQ lo debe declarar como estimado." : "Protocolo completo para revision ceramica con guia, gris y polarizada.")
       : "No hay tercios calculados todavia. Sube fotos del caso y ejecuta Analizar caso.";
   }
 }
@@ -363,7 +363,7 @@ if (photoInput) photoInput.addEventListener("change", async () => {
   }
   markShotDone();
   photoInput.value = "";
-  if (cameraNote) cameraNote.textContent = savedPhotos.length + " foto(s) guardadas. Pulsa Indexar en Atlas para incorporarlas o Analizar caso para generar respuesta.";
+  if (cameraNote) cameraNote.textContent = savedPhotos.length + " foto(s) guardadas. Pulsa Guardar caso o Analizar fotos para generar informe.";
 });
 if (guideInput) guideInput.addEventListener("change", async () => {
   if (!guideInput.files.length) return;
@@ -373,7 +373,7 @@ if (guideInput) guideInput.addEventListener("change", async () => {
   if (guideIndex >= 0) completedShots.add(guideIndex);
   updateShot(currentShot);
   guideInput.value = "";
-  if (cameraNote) cameraNote.textContent = "Guia de color guardada. Ahora sube tarjeta gris BigColor Cera y polarizada para que CeramIQ no lo marque como estimado.";
+  if (cameraNote) cameraNote.textContent = "Guia de color guardada. Ahora sube tarjeta gris BigColor Cera y polarizada para que Ceramic IQ no lo marque como estimado.";
 });
 if (caseDescription) caseDescription.addEventListener("input", () => {
   localStorage.setItem(CASE_TEXT_KEY, caseDescription.value);
@@ -418,7 +418,7 @@ if (takePhoto) takePhoto.addEventListener("click", async () => {
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
   if (blob) await savePhotoBlob(blob, "captura-" + (currentShot + 1) + ".jpg");
   markShotDone();
-  if (cameraNote) cameraNote.textContent = "Captura guardada. Pulsa Indexar en Atlas para incorporarla o Analizar caso para generar respuesta.";
+  if (cameraNote) cameraNote.textContent = "Captura guardada. Pulsa Guardar caso o Analizar fotos para generar informe.";
 });
 if (recordCaseAudio) recordCaseAudio.addEventListener("click", async () => {
   if (recorder && recorder.state === "recording") {

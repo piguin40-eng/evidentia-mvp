@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import re
 import os
@@ -8,6 +11,7 @@ import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageStat
 
@@ -19,6 +23,12 @@ RAG_PYTHON = RAG_ROOT + "/.venv/bin/python"
 RAG_QUERY = RAG_ROOT + "/scripts/query_" + "yoli" + "to_rag.py"
 WHISPER_BIN = "/opt/homebrew/bin/whisper"
 FFMPEG_BIN = "/opt/homebrew/bin/ffmpeg"
+BASIC_AUTH_USER = os.environ.get("CERAMIQ_BASIC_AUTH_USER", "").strip()
+BASIC_AUTH_PASSWORD = os.environ.get("CERAMIQ_BASIC_AUTH_PASSWORD", "").strip()
+BASIC_AUTH_ENABLED = bool(BASIC_AUTH_USER and BASIC_AUTH_PASSWORD)
+AUTH_MODE = os.environ.get("CERAMIQ_AUTH_MODE", "cookie").strip().lower()
+SESSION_COOKIE = "ceramiq_session"
+SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode("utf-8")).hexdigest() if BASIC_AUTH_ENABLED else ""
 
 
 MATERIALS = {
@@ -158,7 +168,7 @@ def write_atlas_record(file_names, photo_payloads, photo_roles, material_payload
     manifest = {
         "case_id": case_id,
         "indexed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "engine": "CeramIQ Atlas",
+        "engine": "Ceramic IQ Case Store",
         "status": "indexed_pending_graph_enrichment",
         "material_system": material["label"],
         "material_payload": material_payload,
@@ -166,7 +176,7 @@ def write_atlas_record(file_names, photo_payloads, photo_roles, material_payload
         "input_photos": stored_photos,
         "input_audio": audio_names,
         "case_audio_transcript": "\n".join(audio_transcripts),
-        "next_step": "run RAG/vector + ceramic graph enrichment over this manifest and associated photos",
+        "next_step": "run Ceramic IQ enrichment over this manifest and associated photos",
     }
     manifest_path = record_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -216,12 +226,12 @@ def fallback_reviewed_rag(reason):
         return {"status": "unavailable", "excerpt": public_text(reason)}
     return {
         "status": "reviewed_fallback",
-        "excerpt": public_text("Chroma timeout/error: " + reason[:240] + "\n\n" + "\n\n---\n\n".join(excerpts)),
+        "excerpt": public_text("Reviewed knowledge fallback: " + reason[:240] + "\n\n" + "\n\n---\n\n".join(excerpts)),
     }
 
 
 def public_text(value):
-    return re.sub("yoli" + "to", "CeramIQ", value, flags=re.IGNORECASE)
+    return re.sub("yoli" + "to", "Ceramic IQ", value, flags=re.IGNORECASE)
 
 
 def transcribe_audio_payload(audio_name, audio_payload):
@@ -553,18 +563,142 @@ class FastBindHTTPServer(ThreadingHTTPServer):
     def server_bind(self):
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(self.server_address)
-        self.server_name = "ceramiq.local"
+        self.server_name = "ceramic-iq.local"
         self.server_port = self.server_address[1]
 
 
+def normalize_auth_user(value):
+    return value.strip().lower()
+
+
+def normalize_auth_secret(value):
+    return value.strip()
+
+
+def valid_credentials(username, password):
+    expected_user = normalize_auth_user(BASIC_AUTH_USER)
+    candidate_user = normalize_auth_user(username)
+    expected_secret = normalize_auth_secret(BASIC_AUTH_PASSWORD)
+    candidate_secret = normalize_auth_secret(password)
+    return hmac.compare_digest(candidate_user, expected_user) and hmac.compare_digest(candidate_secret, expected_secret)
+
+
 class CeramIQHandler(SimpleHTTPRequestHandler):
+    def require_auth(self):
+        if not BASIC_AUTH_ENABLED:
+            return True
+        if AUTH_MODE == "cookie":
+            cookie_header = self.headers.get("Cookie", "")
+            cookies = dict(
+                item.strip().split("=", 1)
+                for item in cookie_header.split(";")
+                if "=" in item
+            )
+            if hmac.compare_digest(cookies.get(SESSION_COOKIE, ""), SESSION_TOKEN):
+                return True
+            self.redirect_to_login()
+            return False
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Basic "):
+            self.send_auth_required()
+            return False
+        try:
+            decoded = base64.b64decode(auth_header.split(" ", 1)[1]).decode("utf-8")
+        except Exception:
+            self.send_auth_required()
+            return False
+        username, sep, password = decoded.partition(":")
+        if sep and valid_credentials(username, password):
+            return True
+        self.send_auth_required()
+        return False
+
+    def send_auth_required(self):
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Ceramic IQ"')
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        body = b'{"error":"authentication_required"}'
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def redirect_to_login(self):
+        self.send_response(302)
+        self.send_header("Location", "/login.html")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def serve_login(self, error=""):
+        escaped_error = "<p class='error'>Usuario o clave incorrectos.</p>" if error else ""
+        body = f'''<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ceramic IQ - acceso</title>
+    <style>
+      :root {{ color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+      body {{ min-height: 100vh; margin: 0; display: grid; place-items: center; background: #09110f; color: #f4fbf8; padding: 24px; }}
+      main {{ width: min(420px, 100%); }}
+      .brand {{ font-size: 30px; font-weight: 800; letter-spacing: .04em; margin-bottom: 10px; }}
+      p {{ color: #9fb4ad; line-height: 1.45; }}
+      form {{ display: grid; gap: 14px; margin-top: 26px; }}
+      label {{ display: grid; gap: 7px; color: #d7e7e2; font-size: 13px; }}
+      input {{ appearance: none; border: 1px solid #28423d; background: #0d1715; color: white; border-radius: 12px; padding: 14px; font-size: 16px; }}
+      button {{ border: 0; border-radius: 12px; padding: 15px; font-weight: 800; background: #9ff4dc; color: #06110e; font-size: 16px; }}
+      .error {{ color: #ffb4a8; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">Ceramic IQ</div>
+      <p>Acceso privado al visor clinico-tecnico.</p>
+      {escaped_error}
+      <form method="post" action="/api/login">
+        <label>Usuario<input name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required /></label>
+        <label>Clave<input name="password" type="password" autocomplete="current-password" required /></label>
+        <button type="submit">Entrar</button>
+      </form>
+    </main>
+  </body>
+</html>'''
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def handle_login(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8", errors="replace")
+        content_type = self.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            payload = json.loads(raw or "{}")
+            username = str(payload.get("username") or "")
+            password = str(payload.get("password") or "")
+        else:
+            payload = parse_qs(raw)
+            username = payload.get("username", [""])[0]
+            password = payload.get("password", [""])[0]
+        if valid_credentials(username, password):
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", f"{SESSION_COOKIE}={SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        self.serve_login(error="1")
+
     def do_GET(self):
-        if self.path == "/api/healthz":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/healthz":
             payload = json.dumps(
                 {
                     "ok": True,
-                    "service": "ceramiq",
-                    "engine": "CeramIQ",
+                    "service": "ceramic-iq",
+                    "engine": "Ceramic IQ",
                     "status": "operational",
                 },
                 ensure_ascii=False,
@@ -575,10 +709,21 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if parsed.path == "/login.html":
+            self.serve_login()
+            return
+        if not self.require_auth():
+            return
         super().do_GET()
 
     def do_POST(self):
-        if self.path not in ("/api/ceramiq/analyze", "/api/ceramiq/index"):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/login":
+            self.handle_login()
+            return
+        if not self.require_auth():
+            return
+        if parsed.path not in ("/api/ceramiq/analyze", "/api/ceramiq/index"):
             self.send_error(404, "Unknown endpoint")
             return
 
@@ -633,7 +778,7 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
                     file_names.append(photo_name)
                     photo_payloads.append({"name": photo_name, "payload": _payload})
 
-        if self.path == "/api/ceramiq/index":
+        if parsed.path == "/api/ceramiq/index":
             manifest = write_atlas_record(file_names, photo_payloads, photo_roles, material_payload, case_description, audio_names, audio_transcripts)
             response = {
                 "ok": True,
@@ -656,8 +801,8 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
         recipe = recipe_for_case(image_analysis["thirds"], full_case_text, material_payload) if image_analysis["thirds"] else []
         validation = build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_evidence, photo_roles, material_payload)
         response = {
-            "engine": "CeramIQ",
-            "public_engine": "CeramIQ Clinical RAG",
+            "engine": "Ceramic IQ",
+            "public_engine": "Ceramic IQ",
             "policy": "ceramiq_ceramic_only",
             "rag_required": True,
             "rag_status": rag_evidence["status"],
@@ -691,5 +836,5 @@ APP_PORT = int(os.environ.get("PORT", os.environ.get("CERAMIQ_PORT", "8798")))
 
 handler = partial(CeramIQHandler, directory=APP_ROOT)
 server = FastBindHTTPServer(("0.0.0.0", APP_PORT), handler)
-print(f"Serving CeramIQ on http://0.0.0.0:{APP_PORT}/", flush=True)
+print(f"Serving Ceramic IQ on http://0.0.0.0:{APP_PORT}/", flush=True)
 server.serve_forever()

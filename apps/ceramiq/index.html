@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>CeramIQ</title>
-    <meta name="description" content="CeramIQ: chat experto de ceramica dental con captura guiada, guia de color, tarjeta BigColor Cera, polarizada y recetas por tercios." />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23111615'/%3E%3Cpath d='M9 6h14l4 6-8 16-3-5-3 5-8-16z' fill='%23f5e6c8'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Ceramic IQ</title>
+    <meta name="description" content="Ceramic IQ: visor de analisis fotografico para ceramica dental con captura guiada, control de calidad, comparativa CIELAB y salida tecnica por tercios." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111615'/%3E%3Cpath d='M16 4.8c-5.2 0-8.4 3.3-8.7 9-.4 7.4 2.7 13.3 7.2 15 1.1-1.5 2.2-1.5 3.2 0 4.5-1.7 7.4-7.6 7-15-.3-5.7-3.5-9-8.7-9z' fill='%23fff7e6'/%3E%3Cpath d='M10 18.4c1.4 4.1 3.7 7 6 7.8 2.6-.9 4.9-4.1 6.1-8.5-3.8 1.9-8.1 2.2-12.1.7z' fill='%23cfe8e5' opacity='.72'/%3E%3Cpath d='M11.2 8.4c2.5-1.3 7.2-1.6 9.8.2 2.2 1.5 2.8 4.4 2.7 7.2-.8-4.8-3.6-7.8-8-7.8-3.8 0-6.1 2.5-7.3 7.1.1-2.8.7-5.4 2.8-6.7z' fill='%23ffffff' opacity='.34'/%3E%3Cpath d='M16 4.8c-5.2 0-8.4 3.3-8.7 9-.4 7.4 2.7 13.3 7.2 15 1.1-1.5 2.2-1.5 3.2 0 4.5-1.7 7.4-7.6 7-15-.3-5.7-3.5-9-8.7-9z' fill='none' stroke='%23ffffff' stroke-width='1.25'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css?v=real-sharp-tooth-20260812g" />
   </head>
   <body>
-    <main class="app-shell" aria-label="CeramIQ">
+    <main class="app-shell" aria-label="Ceramic IQ">
       <nav class="app-nav" aria-label="Navegacion principal">
         <button class="nav-item active" type="button" data-go="home" aria-label="Inicio"><span class="icon-home"></span><small>Inicio</small></button>
         <button class="nav-item" type="button" data-go="capture" aria-label="Captura"><span class="icon-scan"></span><small>Scan</small></button>
@@ -19,52 +19,112 @@
 
       <section class="screen home-screen active" data-screen="home">
         <header class="brand-top">
-          <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+          <div class="brand-mark tooth-brand-mark" aria-hidden="true">
+            <svg class="tooth-glyph mark-glyph" viewBox="0 0 120 164" focusable="false">
+              <defs>
+                <clipPath id="brandToothClip">
+                  <path d="M60 8C30 8 15 26 14 61c-1 45 17 83 39 96 4-6 10-6 14 0 22-13 40-51 39-96C105 26 90 8 60 8Z" />
+                </clipPath>
+                <linearGradient id="brandEnamel" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="#fff8e8" />
+                  <stop offset=".58" stop-color="#edd9b7" />
+                  <stop offset="1" stop-color="#d0eee9" />
+                </linearGradient>
+                <radialGradient id="brandGlow" cx=".3" cy=".22" r=".82">
+                  <stop offset="0" stop-color="#ffffff" stop-opacity=".78" />
+                  <stop offset=".46" stop-color="#ffffff" stop-opacity=".16" />
+                  <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+              <g clip-path="url(#brandToothClip)">
+                <rect x="0" y="0" width="120" height="164" fill="url(#brandEnamel)" />
+                <path d="M18 100c19 11 55 12 84-2-4 27-17 50-35 61-4-6-10-6-14 0-17-10-30-31-35-59Z" fill="#b8dedb" opacity=".42" />
+                <path d="M31 22c14-10 44-12 61 1 12 9 15 28 12 47-5-31-22-49-45-49-21 0-34 16-42 45-1-18 2-35 14-44Z" fill="url(#brandGlow)" />
+              </g>
+              <path class="tooth-outline" d="M60 8C30 8 15 26 14 61c-1 45 17 83 39 96 4-6 10-6 14 0 22-13 40-51 39-96C105 26 90 8 60 8Z" />
+            </svg>
+            <img class="reference-tooth-mark" src="./assets/miguel-reference-incisor-real-sharp.png?v=20260812g" alt="" />
+          </div>
           <div>
-            <strong>CeramIQ</strong>
-            <span>By Miguel Arroyo</span>
+            <strong>Ceramic IQ</strong>
+            <span>Photo ceramic intelligence</span>
           </div>
           <button class="icon-button" type="button" data-go="library" aria-label="Biblioteca"><span class="dots"></span></button>
         </header>
 
         <section class="hero-panel">
-          <div class="tooth-stage" aria-label="Visualizacion dental CeramIQ">
+          <div class="tooth-stage" aria-label="Visualizacion dental Ceramic IQ">
             <div class="shade-ruler" aria-hidden="true">
               <span style="background:#f6ead5"></span>
               <span style="background:#e7d0a9"></span>
               <span style="background:#cfa675"></span>
               <span style="background:#a87955"></span>
             </div>
-            <div class="tooth-model" aria-hidden="true">
-              <span class="third incisal">I</span>
-              <span class="third middle">M</span>
-              <span class="third cervical">C</span>
-            </div>
+            <svg class="tooth-model segmented-tooth-model" viewBox="0 0 220 300" aria-hidden="true" focusable="false">
+              <defs>
+                <clipPath id="heroToothClip">
+                  <path d="M110 10C57 10 31 42 30 95c-2 79 30 151 68 184 7 6 17 6 24 0 38-33 70-105 68-184-1-53-27-85-80-85Z" />
+                </clipPath>
+                <linearGradient id="enamelBody" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0" stop-color="#fff9ea" />
+                  <stop offset=".45" stop-color="#ead7b7" />
+                  <stop offset=".72" stop-color="#d9c29f" />
+                  <stop offset="1" stop-color="#c4e1de" />
+                </linearGradient>
+                <radialGradient id="enamelLight" cx=".34" cy=".22" r=".8">
+                  <stop offset="0" stop-color="#ffffff" stop-opacity=".86" />
+                  <stop offset=".42" stop-color="#ffffff" stop-opacity=".2" />
+                  <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+                </radialGradient>
+                <radialGradient id="enamelWarmth" cx=".52" cy=".46" r=".64">
+                  <stop offset="0" stop-color="#d6a56f" stop-opacity=".3" />
+                  <stop offset=".58" stop-color="#d6a56f" stop-opacity=".1" />
+                  <stop offset="1" stop-color="#d6a56f" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+              <g clip-path="url(#heroToothClip)">
+                <rect x="0" y="0" width="220" height="300" fill="url(#enamelBody)" />
+                <path class="soft-incisal" d="M36 206c38 17 102 17 148-4-9 34-29 63-62 86-7 5-17 5-24 0-30-21-50-49-62-82Z" />
+                <path class="soft-cervical" d="M42 24c29-16 91-17 126 5 15 10 22 28 21 55-12-37-39-58-80-58-38 0-63 20-77 56-1-27 3-47 10-58Z" />
+                <path class="tooth-shine primary" d="M67 42c-21 18-31 45-31 82" />
+                <path class="tooth-shine secondary" d="M153 45c18 20 25 45 23 79" />
+                <rect x="0" y="0" width="220" height="300" fill="url(#enamelLight)" />
+                <rect x="0" y="0" width="220" height="300" fill="url(#enamelWarmth)" />
+              </g>
+              <path class="tooth-outline" d="M110 10C57 10 31 42 30 95c-2 79 30 151 68 184 7 6 17 6 24 0 38-33 70-105 68-184-1-53-27-85-80-85Z" />
+            </svg>
+            <img class="tooth-model reference-tooth-hero" src="./assets/miguel-reference-incisor-real-sharp.png?v=20260812g" alt="" />
             <div class="lab-grid" aria-hidden="true">
               <b>L* 78.4</b>
               <b>a* 1.8</b>
               <b>b* 14.9</b>
             </div>
           </div>
-          <p class="eyebrow">Chat experto de ceramica</p>
-          <h1>Consulta el caso y decide mejor la ceramica.</h1>
-          <p class="lead">Sube fotografias, guia, tarjeta gris y polarizada para preguntar material, estrategia optica, masas, sustrato, ajustes y recetas por tercios.</p>
-          <div class="engine-badge">CeramIQ = Ceramic Intelligence</div>
+          <p class="eyebrow">Analisis fotografico</p>
+          <h1>Ceramic IQ analiza tus fotos y convierte color en decision.</h1>
+          <p class="lead">Carga objetivo, prueba, guia, tarjeta gris, polarizada y sustrato. El visor separa calidad de captura, mapa optico, Delta E y propuesta tecnica por tercios.</p>
+          <div class="engine-badge">Ceramic IQ · foto -> diagnostico -> receta</div>
           <div class="hero-actions">
-            <button class="primary-action" type="button" data-go="capture">Nuevo caso</button>
-            <button class="secondary-action" type="button" data-go="recipe">Ver salida</button>
+            <button class="primary-action" type="button" data-go="capture">Analizar fotos</button>
+            <button class="secondary-action" type="button" data-go="analysis">Ver visor</button>
           </div>
         </section>
 
+        <section class="capture-quality-panel" aria-label="Flujo de captura Ceramic IQ">
+          <article><span>01</span><strong>Fotos del caso</strong><p>Objetivo, prueba, sustrato y textura con roles claros.</p></article>
+          <article><span>02</span><strong>Control de luz</strong><p>Guia, gris y polarizada separan color real de brillo.</p></article>
+          <article><span>03</span><strong>Salida vendible</strong><p>Diagnostico, riesgos, material y receta explicable.</p></article>
+        </section>
+
         <section class="evidence-panel">
-          <div class="evidence-media" aria-label="Mapa vestibular de referencia CeramIQ">
-            <img src="./assets/ceramiq-8-zones-reference.jpg" alt="Referencia vestibular por 8 zonas para analisis ceramico" />
-            <span>8 zonas vestibulares</span>
+          <div class="evidence-media" aria-label="Mapa vestibular de referencia Ceramic IQ">
+            <img src="./assets/miguel-reference-incisor-real-sharp.png?v=20260812g" alt="Incisivo central vestibular de referencia para Ceramic IQ" />
+            <span>Incisivo vestibular</span>
           </div>
           <div class="evidence-copy">
-            <p class="eyebrow">Evidencia comparativa</p>
+            <p class="eyebrow">Visor de evidencia</p>
             <h2>Objetivo vs prueba, por tercios y zonas.</h2>
-            <p>CeramIQ toma una foto objetivo y una foto de prueba para calcular Delta E, revisar la coherencia del material y preparar una respuesta explicable para el caso.</p>
+            <p>Ceramic IQ compara las imagenes subidas, muestra que protocolo falta y prepara una respuesta tecnica que se puede enseñar, revisar y vender.</p>
           </div>
         </section>
 
@@ -77,16 +137,16 @@
         </section>
 
         <section class="case-summary">
-          <article><span class="signal green"></span><strong>Calibracion</strong><p>Tarjeta gris BigColor detectada</p></article>
-          <article><span class="signal amber"></span><strong>Delta E</strong><p>2.7 objetivo vs prueba</p></article>
-          <article><span class="signal blue"></span><strong>Evidencia</strong><p>Fotos, guia y comparativa</p></article>
+          <article><span class="signal green"></span><strong>Captura</strong><p>Roles y protocolo visibles</p></article>
+          <article><span class="signal amber"></span><strong>Delta E</strong><p>Objetivo vs prueba</p></article>
+          <article><span class="signal blue"></span><strong>Salida</strong><p>Informe tecnico accionable</p></article>
         </section>
       </section>
 
       <section class="screen capture-screen" data-screen="capture">
         <header class="screen-header">
           <button class="back-button" type="button" data-go="home" aria-label="Volver"></button>
-          <div><p class="eyebrow">Paso 1</p><h2>Captura clinica</h2></div>
+          <div><p class="eyebrow">Entrada del caso</p><h2>Fotos para analizar</h2></div>
         </header>
 
         <section class="capture-viewport">
@@ -113,7 +173,7 @@
 
         <section class="case-input-panel">
           <div class="case-input-head">
-            <div><p class="eyebrow">Brief del caso</p><h3>Que vamos a resolver</h3></div>
+            <div><p class="eyebrow">Brief tecnico</p><h3>Que debe decidir Ceramic IQ</h3></div>
             <span class="save-state" id="saveState">Guardado local</span>
           </div>
           <label class="select-field">
@@ -128,7 +188,7 @@
             </select>
           </label>
           <input class="custom-material" id="customMaterial" type="text" placeholder="Nombre del material personalizado" />
-          <textarea id="caseDescription" rows="4" placeholder="Ej: Carilla ceramica en 21 para copiar 11. Sustrato oscuro, objetivo bleach luminoso. Que material usarias, como bloquearias y que masas pondrias por tercios?"></textarea>
+          <textarea id="caseDescription" rows="4" placeholder="Ej: Carilla en 21 para copiar 11. Sustrato oscuro, objetivo bleach luminoso. Analizar valor, croma, riesgo de bloqueo, material y receta por tercios."></textarea>
           <div class="voice-row">
             <button class="voice-button" type="button" id="recordCaseAudio"><span class="mic-icon"></span><strong>Grabar audio del caso</strong></button>
             <audio id="caseAudioPreview" controls></audio>
@@ -139,7 +199,7 @@
           <label class="upload-action">
             <input id="photoInput" type="file" accept="image/*" multiple />
             <span class="upload-icon"></span>
-            <span><strong>Subir fotos del caso</strong><small>Objetivo, tarjeta, polarizada, sustrato o prueba</small></span>
+            <span><strong>Subir fotos del caso</strong><small>Objetivo, prueba, textura, sustrato o mock-up</small></span>
           </label>
           <label class="upload-action guide-upload">
             <input id="guideInput" type="file" accept="image/*" />
@@ -152,24 +212,24 @@
           <div class="media-grid" id="mediaGrid"></div>
           <button class="clear-button" type="button" id="clearCase">Vaciar caso local</button>
         </section>
-        <p class="note" id="cameraNote">Arnes activo: cada foto se analiza con CeramIQ. Sin tarjeta gris, guia y polarizada, CIELAB y Delta E quedan estimados.</p>
+        <p class="note" id="cameraNote">Cada foto entra al visor Ceramic IQ con rol de captura. Sin tarjeta gris, guia y polarizada, CIELAB y Delta E quedan estimados.</p>
         <div class="case-actions">
-          <button class="secondary-action" type="button" id="indexCase">Indexar en Atlas</button>
-          <button class="primary-action" type="button" data-go="processing" id="runAnalysis">Analizar caso</button>
+          <button class="secondary-action" type="button" id="indexCase">Guardar caso</button>
+          <button class="primary-action" type="button" data-go="processing" id="runAnalysis">Analizar fotos</button>
         </div>
       </section>
 
       <section class="screen processing-screen" data-screen="processing">
         <div class="processing-core" aria-live="polite">
-          <div class="analysis-orbit" aria-hidden="true"><span></span><i></i><b></b></div>
-          <p class="eyebrow">CeramIQ engine</p>
+          <div class="analysis-orbit" aria-hidden="true"><span class="segmented-tooth"><b></b><b></b><b></b><b></b></span><img class="reference-tooth-processing" src="./assets/miguel-reference-incisor-real-sharp.png?v=20260812g" alt="" /><i></i><b></b></div>
+          <p class="eyebrow">Ceramic IQ engine</p>
           <h2>Calculando mapa optico</h2>
-          <p class="engine-note" id="engineNote">CeramIQ revisa fotos, guia, tarjeta y polarizada antes de responder al caso.</p>
+          <p class="engine-note" id="engineNote">Ceramic IQ revisa fotos, guia, tarjeta y polarizada antes de emitir una salida tecnica.</p>
           <div class="check-stack">
             <span class="done">Balance de blancos aplicado</span>
             <span class="done">Tercios dentales segmentados</span>
             <span class="done">CIELAB comparado</span>
-            <span>Respuesta ceramica generada</span>
+            <span>Informe Ceramic IQ generado</span>
           </div>
         </div>
       </section>
@@ -177,7 +237,7 @@
       <section class="screen analysis-screen" data-screen="analysis">
         <header class="screen-header">
           <button class="back-button" type="button" data-go="capture" aria-label="Volver"></button>
-          <div><p class="eyebrow">Resultado CeramIQ</p><h2>Diagnostico optico</h2></div>
+          <div><p class="eyebrow">Resultado Ceramic IQ</p><h2>Visor de analisis</h2></div>
         </header>
 
         <section class="lab-card">
@@ -206,9 +266,9 @@
         <section class="ceramiq-answer" id="ceramiqAnswer">
           <div>
             <p class="eyebrow">Lectura del caso</p>
-            <h3>Sube el caso para recibir una respuesta ceramica trazable.</h3>
+            <h3>Sube el caso para recibir una lectura Ceramic IQ trazable.</h3>
           </div>
-          <p>La respuesta quedara separada en diagnostico por tercios, riesgos de calibracion, material recomendado, estrategia optica y receta cuando proceda. Si falta guia, gris o polarizada, CeramIQ lo marcara como estimado.</p>
+          <p>La salida queda separada en calidad de captura, diagnostico por tercios, riesgos de calibracion, material recomendado, estrategia optica y receta cuando proceda. Si falta guia, gris o polarizada, Ceramic IQ lo marcara como estimado.</p>
         </section>
 
         <button class="primary-action" type="button" data-go="recipe">Ver respuesta</button>
@@ -217,7 +277,7 @@
       <section class="screen recipe-screen" data-screen="recipe">
         <header class="screen-header">
           <button class="back-button" type="button" data-go="analysis" aria-label="Volver"></button>
-          <div><p class="eyebrow">Salida CeramIQ</p><h2>Respuesta del caso</h2></div>
+          <div><p class="eyebrow">Salida Ceramic IQ</p><h2>Informe del caso</h2></div>
         </header>
 
         <section class="recipe-hero">
@@ -257,8 +317,8 @@
         </section>
 
         <section class="action-panel">
-          <strong>Salida clinica</strong>
-          <p>Exportar PDF con fotos, guia, valores CIELAB, Delta E, criterio de material, receta y nivel de calibracion.</p>
+          <strong>Informe vendible</strong>
+          <p>Exportar PDF con fotos, guia, valores CIELAB, Delta E, calidad de captura, criterio de material, receta y nivel de calibracion.</p>
           <button class="secondary-action" type="button" data-go="library">Abrir biblioteca</button>
         </section>
       </section>
@@ -266,19 +326,19 @@
       <section class="screen library-screen" data-screen="library">
         <header class="screen-header">
           <button class="back-button" type="button" data-go="home" aria-label="Volver"></button>
-          <div><p class="eyebrow">Base privada</p><h2>Biblioteca CeramIQ</h2></div>
+          <div><p class="eyebrow">Base privada</p><h2>Biblioteca Ceramic IQ</h2></div>
         </header>
 
         <section class="library-grid">
           <article><span class="chip">Material</span><strong>IPS e.max Ceram</strong><p>Masas, familias opticas y reglas por grosor.</p></article>
           <article><span class="chip">Color</span><strong>BigColor Cera</strong><p>Tarjeta gris, CIELAB trazable y control de luz.</p></article>
           <article><span class="chip">Casos</span><strong>Criterios validados</strong><p>Aprendizaje por sustrato, cemento y resultado real.</p></article>
-          <article><span class="chip">Motor</span><strong>Respuesta experta</strong><p>Diagnostico optico, material, limites del caso y receta por tercios.</p></article>
+          <article><span class="chip">Motor</span><strong>Informe Ceramic IQ</strong><p>Diagnostico optico, material, limites del caso y receta por tercios.</p></article>
         </section>
 
         <section class="notes-panel">
           <strong>Regla de seguridad</strong>
-          <p>Si falta guia, gris calibrado o polarizada, CeramIQ no declara medicion absoluta: marca el caso como estimado.</p>
+          <p>Si falta guia, gris calibrado o polarizada, Ceramic IQ no declara medicion absoluta: marca el caso como estimado.</p>
         </section>
       </section>
     </main>
