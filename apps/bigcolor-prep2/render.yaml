@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: bigcolor-prep2
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install --no-cache-dir -r requirements.txt && python -m py_compile prep_app_server.py prep_engine.py
+    startCommand: python prep_app_server.py $PORT --host 0.0.0.0
+    healthCheckPath: /BigColor_PREP_2_APP.html
+    autoDeploy: true
+    envVars:
+      - key: BIGCOLOR_PREP_ENV
+        value: production

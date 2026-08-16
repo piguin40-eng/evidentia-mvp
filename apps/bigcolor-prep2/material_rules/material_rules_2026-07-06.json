@@ -1,0 +1,885 @@
+{
+  "schema_version": "0.5.0",
+  "created_at": "2026-07-06",
+  "owner_role": "Yolito Ceram",
+  "project": "BigColor PREP 2",
+  "scope": "Technical/lab planning rules for preoperative/wax-up thickness viewer. Not a diagnosis and not a substitute for current IFU, clinician judgement, registration QA, or case-specific validation.",
+  "units": "mm",
+  "evidence_status_values": [
+    "verified",
+    "secondary_unconfirmed",
+    "estimated_legacy_demo",
+    "pending_source"
+  ],
+  "source_quality_values": [
+    "manufacturer_primary_web",
+    "manufacturer_ifu_pdf_needed",
+    "secondary_pdf_or_lab_guide",
+    "legacy_demo",
+    "unknown",
+    "manufacturer_primary_pdf_legacy_preparation_guide",
+    "manufacturer_primary_pdf_scientific_review_no_preparation_table",
+    "unresolved_material_identifier",
+    "local_project_audit_no_primary_source"
+  ],
+  "ruleset_version": "material_rules_2026-07-06",
+  "color_policy": {
+    "basis": "Compare measured available thickness/space against the zone requirement selected for material and restoration type.",
+    "colors": [
+      {
+        "status": "insufficient_space",
+        "color_key": "red",
+        "hex": "#ff2d7d",
+        "condition": "measured_mm < required_min_mm",
+        "technical_action": "Falta espacio para este material/zona. Revisar wax-up, reduccion planificada o seleccionar material/indicacion con requisito menor si procede."
+      },
+      {
+        "status": "borderline",
+        "color_key": "yellow",
+        "hex": "#fff34a",
+        "condition": "required_min_mm <= measured_mm < required_ideal_mm when ideal exists, or abs(measured_mm - required_min_mm) <= 0.05 when only minimum exists",
+        "technical_action": "Zona limite. Confirmar IFU, adhesion/cementacion, sustrato, oclusion y confianza del registro antes de aceptar."
+      },
+      {
+        "status": "within_target",
+        "color_key": "green",
+        "hex": "#24ff9a",
+        "condition": "measured_mm >= required_ideal_mm and measured_mm <= upper_limit_mm when both exist, or measured_mm >= required_min_mm when only minimum exists",
+        "technical_action": "Espacio compatible con la regla seleccionada, sujeto a validacion de caso y fuente."
+      },
+      {
+        "status": "over_reduced_or_excess_space",
+        "color_key": "purple",
+        "hex": "#bb4dff",
+        "condition": "upper_limit_mm exists and measured_mm > upper_limit_mm",
+        "technical_action": "Sobre-espacio o reduccion excesiva segun el perfil. Revisar soporte, diseno, cemento y necesidad de compensacion."
+      },
+      {
+        "status": "low_confidence",
+        "color_key": "gray",
+        "hex": "#8ba6b2",
+        "condition": "registration_confidence == low or zone_rule evidence_status is pending_source",
+        "technical_action": "No usar como decision tecnica final. Falta fuente, registro fiable o segmentacion validada."
+      }
+    ]
+  },
+  "measurement_output_contract": {
+    "required_fields": [
+      "tooth_fdi",
+      "zone_key",
+      "measured_mm",
+      "material_key",
+      "restoration_type",
+      "required_min_mm",
+      "required_ideal_mm",
+      "upper_limit_mm",
+      "evidence_status",
+      "source_refs",
+      "color_status",
+      "technical_action",
+      "caveat"
+    ],
+    "example": {
+      "tooth_fdi": 11,
+      "zone_key": "facial_cervical",
+      "measured_mm": 0.28,
+      "material_key": "ips_emax_press",
+      "restoration_type": "thin_veneer",
+      "required_min_mm": 0.3,
+      "required_ideal_mm": null,
+      "upper_limit_mm": null,
+      "evidence_status": "verified",
+      "source_refs": [
+        "ivoclar_ips_emax_press_product_page_2026_07_02"
+      ],
+      "color_status": "insufficient_space",
+      "technical_action": "Falta espacio para veneer fino IPS e.max Press en cervical/labial; revisar reduccion o indicacion.",
+      "caveat": "Regla de espesor minima desde pagina fabricante; confirmar IFU vigente antes de uso clinico."
+    }
+  },
+  "sources": [
+    {
+      "source_id": "ivoclar_ips_emax_press_product_page_2026_07_02",
+      "title": "IPS e.max Press | Glass-ceramic restorations",
+      "publisher": "Ivoclar",
+      "url": "https://www.ivoclar.com/en_li/products/metal-free-ceramics/ips-e.max-press-lab",
+      "accessed_at": "2026-07-02",
+      "source_quality": "manufacturer_primary_web",
+      "quoted_relevant_text": "Veneers (>= 0.3 mm); Onlays (incl. occlusal veneers of >=1.0 mm), partial crowns; Crowns (>= 1.0 mm in the anterior and posterior region).",
+      "notes": "Pagina primaria de fabricante localizada. Pendiente descargar/archivar IFU PDF vigente para granularidad por zona y cementacion."
+    },
+    {
+      "source_id": "ivoclar_ips_emax_cad_product_page_2026_07_02",
+      "title": "IPS e.max CAD | Lithium disilicate block for CAD/CAM",
+      "publisher": "Ivoclar",
+      "url": "https://www.ivoclar.com/en_us/products/digital-processes/ips-e.max-cad",
+      "accessed_at": "2026-07-02",
+      "source_quality": "manufacturer_primary_web",
+      "quoted_relevant_text": "IPS e.max CAD ... suitable for crowns, veneers, inlays, onlays, and three-unit bridges up to the premolar region.",
+      "notes": "Confirma material/indicaciones generales, pero en la pagina consultada no se extrajo tabla completa de espesores por preparacion. Requiere IFU PDF vigente."
+    },
+    {
+      "source_id": "ips_preparation_cementation_secondary_guide_2026_07_02",
+      "title": "IPS e.max Press Preparation and Cementation Guides",
+      "publisher": "Secondary/lab-hosted PDF, not official primary IFU",
+      "url": "https://mctechdentallab.blob.core.windows.net/content/docs/IPS-Preparation-Cementation-Guides.pdf",
+      "accessed_at": "2026-07-02",
+      "source_quality": "secondary_pdf_or_lab_guide",
+      "quoted_relevant_text": "Search result snippet reported thin veneer minimum layer thickness cervical/labial 0.3 mm and incisal edge 0.4 mm.",
+      "notes": "No usar como verificado hasta contrastar contra documento oficial de Ivoclar/IFU vigente."
+    },
+    {
+      "source_id": "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03",
+      "title": "IPS e.max CAD Step-by-step for CEREC / Preparation guidelines",
+      "publisher": "Ivoclar Vivadent AG",
+      "url": "https://www.ivoclar.com/medias/IPSIPS-emax-CAD-Step-by-Step-for-CEREC.pdf",
+      "accessed_at": "2026-07-03",
+      "source_quality": "manufacturer_primary_pdf_legacy_preparation_guide",
+      "quoted_relevant_text": "The PDF page labelled Preparation guidelines shows minimum thickness diagrams for Veneer, Inlay, Onlay, Anterior crown, Partial crown, and Posterior crown. Visible values: veneer 0.6/0.6/0.7 mm; inlay/onlay 1.0 mm; anterior crown 1.0/1.2/1.5 mm; posterior/partial crowns 1.0/1.5 mm depending on zone.",
+      "notes": "Official Ivoclar-hosted PDF, document code 627931/en/2015-04-13. Treat as verified source for this archived preparation guide, but still confirm current eIFU/IFU before clinical use."
+    },
+    {
+      "source_id": "ivoclar_ips_empress_cad_product_page_2026_07_04",
+      "title": "IPS Empress CAD | Highly esthetic leucite glass-ceramics for chairside restorations",
+      "publisher": "Ivoclar",
+      "url": "https://www.ivoclar.com/en_li/products/digital-processes/ips-empress-cad",
+      "accessed_at": "2026-07-04",
+      "source_quality": "manufacturer_primary_web",
+      "quoted_relevant_text": "IPS Empress CAD is a highly esthetic leucite-reinforced glass-ceramic, especially designed for the efficient fabrication of full-contour single-tooth restorations using CAD/CAM. Flexural strength reported on page: 185 MPa.",
+      "notes": "Identifies product, ceramic family, workflow, broad indications, and material strength. The extracted product page text did not provide preparation minimum thickness values by restoration/zone."
+    },
+    {
+      "source_id": "ivoclar_ips_empress_cad_brochure_pdf_2026_07_04",
+      "title": "IPS Empress CAD brochure",
+      "publisher": "Ivoclar",
+      "url": "https://www.ivoclar.com/medias/sys_master/celum-connect2-assets/celum-connect2-assets/h91/hc1/10213191319582/664495-Empress-CAD-Brochure.pdf",
+      "accessed_at": "2026-07-04",
+      "source_quality": "manufacturer_primary_pdf_scientific_review_no_preparation_table",
+      "quoted_relevant_text": "Brochure text reviewed locally; it describes inlays, onlays, veneers and crowns, but the extracted text did not contain a preparation/minimum thickness table.",
+      "notes": "Downloaded to outputs/source-check-2026-07-04/ips-empress-cad-brochure.pdf and text-extracted. Useful for product identity only, not for thickness rules."
+    },
+    {
+      "source_id": "ivoclar_ips_empress_cad_scientific_pdf_2026_07_04",
+      "title": "IPS Empress CAD scientific documentation",
+      "publisher": "Ivoclar",
+      "url": "https://www.ivoclar.com/medias/sys_master/celum-connect2-assets/celum-connect2-assets/hb5/h68/10453530640414/IPS-Empress-CAD.pdf",
+      "accessed_at": "2026-07-04",
+      "source_quality": "manufacturer_primary_pdf_scientific_review_no_preparation_table",
+      "quoted_relevant_text": "Scientific documentation references a study on influence of circular preparation depth using 0.8 mm, 1.0 mm, and 1.2 mm depths, but does not present these as IFU minimum thickness requirements.",
+      "notes": "Downloaded to outputs/source-check-2026-07-04/ips-empress-cad-scientific.pdf and text-extracted. Do not convert study depths into viewer requirements."
+    },
+    {
+      "source_id": "local_project_amt_identifier_audit_2026_07_05",
+      "title": "Local BigColor PREP 2 audit for AMT identifier",
+      "publisher": "Yolito Ceram / local project files",
+      "url": null,
+      "accessed_at": "2026-07-05",
+      "source_quality": "local_project_audit_no_primary_source",
+      "quoted_relevant_text": "Local project search found AMT only as an unresolved placeholder/pending material, not as a product-specific IFU or manufacturer source.",
+      "notes": "Do not map AMT to a ceramic family or minimum thickness until Miguel confirms product/manufacturer and an IFU/ficha tecnica is located."
+    }
+  ],
+  "materials": [
+    {
+      "material_key": "ips_emax_press",
+      "display_name": "IPS e.max Press",
+      "family": "lithium_disilicate_glass_ceramic",
+      "manufacturer": "Ivoclar",
+      "overall_status": "partially_verified",
+      "caveat": "Reglas minimas extraidas de pagina primaria del fabricante. Antes de decision clinica hace falta IFU vigente, indicacion exacta, cementacion, sustrato y control de registro.",
+      "profiles": [
+        {
+          "profile_key": "ips_emax_press_thin_veneer_primary_minimums",
+          "restoration_type": "thin_veneer",
+          "indication_scope": "Veneer fino. La pagina primaria de Ivoclar verifica espesor minimo global >=0.3 mm; no aporta en esa pagina el desglose completo por zona.",
+          "default_for_viewer": true,
+          "zones": [
+            {
+              "zone_key": "facial_cervical",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": 0.3,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "Minimo veneer >=0.3 mm desde pagina primaria. Confirmar IFU vigente para margen, preparacion intraesmalte y cementacion adhesiva."
+            },
+            {
+              "zone_key": "facial_middle",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 0.3,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "Regla global de veneer >=0.3 mm aplicada a zona media por falta de desglose primario localizado."
+            },
+            {
+              "zone_key": "incisal_edge",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 0.3,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "La pagina primaria solo verifica veneer >=0.3 mm. Un dato secundario sugiere 0.4 mm incisal para thin veneer, pero queda sin confirmar contra IFU."
+            },
+            {
+              "zone_key": "incisal_edge_secondary_candidate",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 0.4,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "secondary_unconfirmed",
+              "source_refs": [
+                "ips_preparation_cementation_secondary_guide_2026_07_02"
+              ],
+              "caveat": "Candidato de regla no verificado: usar solo para revision Yolito/IFU, no para semaforo clinico."
+            }
+          ]
+        },
+        {
+          "profile_key": "ips_emax_press_single_crown_primary_minimums",
+          "restoration_type": "single_crown",
+          "indication_scope": "Corona anterior/posterior IPS e.max Press.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "axial_circumferential",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "Pagina primaria verifica coronas >=1.0 mm en anterior y posterior; faltan detalles por cuspide/oclusal/margen desde IFU."
+            },
+            {
+              "zone_key": "occlusal_or_incisal_functional",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "Regla general de corona >=1.0 mm; confirmar tabla IFU para cargas funcionales y bruxismo."
+            }
+          ]
+        },
+        {
+          "profile_key": "ips_emax_press_occlusal_veneer_onlay_primary_minimums",
+          "restoration_type": "occlusal_veneer_or_onlay",
+          "indication_scope": "Onlay u occlusal veneer IPS e.max Press.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "occlusal",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_press_product_page_2026_07_02"
+              ],
+              "caveat": "Pagina primaria verifica onlays, incl. occlusal veneers, >=1.0 mm."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "material_key": "ips_emax_cad",
+      "display_name": "IPS e.max CAD",
+      "family": "lithium_disilicate_glass_ceramic",
+      "manufacturer": "Ivoclar",
+      "overall_status": "primary_legacy_preparation_guide_verified_current_ifu_pending",
+      "caveat": "Reglas extraidas de PDF oficial Ivoclar Step-by-step for CEREC (2015). Sirven para codificar visor como guia tecnica trazable, pero requieren confirmacion contra eIFU/IFU vigente y contexto clinico antes de uso final.",
+      "profiles": [
+        {
+          "profile_key": "ips_emax_cad_veneer_cerec_2015_primary_preparation",
+          "restoration_type": "veneer",
+          "indication_scope": "Veneer IPS e.max CAD segun lamina Ivoclar/CEREC 2015. No sustituye IFU vigente.",
+          "default_for_viewer": true,
+          "zones": [
+            {
+              "zone_key": "facial_cervical",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": 0.6,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Para veneer IPS e.max CAD, preparar/confirmar espacio minimo 0.6 mm en cervical facial si la indicacion y cementacion son compatibles.",
+              "caveat": "Valor visible en guia Ivoclar/CEREC 2015; confirmar eIFU/IFU vigente, esmalte disponible, adhesion, margen y sustrato."
+            },
+            {
+              "zone_key": "facial_middle",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 0.6,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Para veneer IPS e.max CAD, confirmar espacio minimo 0.6 mm en tercio medio facial.",
+              "caveat": "Valor visible en guia Ivoclar/CEREC 2015; confirmar eIFU/IFU vigente y caso."
+            },
+            {
+              "zone_key": "incisal_edge",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 0.7,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Para veneer IPS e.max CAD, confirmar espacio minimo 0.7 mm en zona incisal segun guia CEREC 2015.",
+              "caveat": "Valor visible en guia Ivoclar/CEREC 2015; no confundir con IPS e.max Press thin veneer. Confirmar eIFU vigente."
+            }
+          ]
+        },
+        {
+          "profile_key": "ips_emax_cad_inlay_onlay_cerec_2015_primary_preparation",
+          "restoration_type": "inlay_or_onlay",
+          "indication_scope": "Inlay/onlay IPS e.max CAD segun lamina Ivoclar/CEREC 2015.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "occlusal_floor_or_isthmus",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Para inlay/onlay IPS e.max CAD, confirmar minimo 1.0 mm en suelo/isthmus/espesor funcional visible en la guia.",
+              "caveat": "La lamina usa esquema de preparacion; el visor actual mapea provisionalmente esta zona a Incisal hasta tener zonas oclusales reales."
+            },
+            {
+              "zone_key": "occlusal_cusp_coverage",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Para cobertura cuspidea/onlay IPS e.max CAD, confirmar minimo 1.0 mm visible en la guia.",
+              "caveat": "Confirmar IFU vigente y carga oclusal. Zona oclusal aun no existe como segmentacion anatomica en el motor actual."
+            }
+          ]
+        },
+        {
+          "profile_key": "ips_emax_cad_anterior_crown_cerec_2015_primary_preparation",
+          "restoration_type": "anterior_crown",
+          "indication_scope": "Corona anterior IPS e.max CAD segun lamina Ivoclar/CEREC 2015.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "cervical_margin_or_chamfer",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona anterior IPS e.max CAD: confirmar hombro/chamfer o zona cervical con minimo 1.0 mm segun guia.",
+              "caveat": "Mapeo provisional a Cervical. Confirmar preparacion, margen y eIFU vigente."
+            },
+            {
+              "zone_key": "axial_labial_lingual",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 1.2,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona anterior IPS e.max CAD: confirmar reduccion axial minima 1.2 mm en zona media.",
+              "caveat": "Valor visible en guia CEREC 2015; confirmar eIFU vigente."
+            },
+            {
+              "zone_key": "incisal_reduction",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.5,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona anterior IPS e.max CAD: confirmar reduccion incisal minima 1.5 mm.",
+              "caveat": "Valor visible en guia CEREC 2015; confirmar oclusion, material exacto y eIFU vigente."
+            }
+          ]
+        },
+        {
+          "profile_key": "ips_emax_cad_posterior_crown_cerec_2015_primary_preparation",
+          "restoration_type": "posterior_crown",
+          "indication_scope": "Corona posterior IPS e.max CAD segun lamina Ivoclar/CEREC 2015.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "cervical_margin_or_chamfer",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona posterior IPS e.max CAD: confirmar minimo cervical/margen 1.0 mm visible en guia.",
+              "caveat": "Mapeo provisional a Cervical. Confirmar eIFU vigente y preparacion real."
+            },
+            {
+              "zone_key": "axial_circumferential",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 1.0,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona posterior IPS e.max CAD: confirmar minimo axial 1.0 mm.",
+              "caveat": "Valor visible en guia CEREC 2015; confirmar eIFU vigente."
+            },
+            {
+              "zone_key": "occlusal_functional",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 1.5,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "verified",
+              "source_refs": [
+                "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+              ],
+              "technical_action": "Corona posterior IPS e.max CAD: confirmar reduccion oclusal funcional minima 1.5 mm.",
+              "caveat": "Zona oclusal se mapea provisionalmente a Incisal en motor actual. Confirmar eIFU vigente, contacto funcional y bruxismo."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "material_key": "ips_empress_cad",
+      "display_name": "IPS Empress CAD",
+      "family": "leucite_reinforced_glass_ceramic",
+      "manufacturer": "Ivoclar",
+      "overall_status": "product_identified_thickness_pending_source",
+      "caveat": "Producto/familia identificados en fuentes primarias Ivoclar. No se localizaron espesores minimos por zona en las fuentes revisadas hoy; no usar para semaforo clinico hasta IFU/ficha tecnica vigente.",
+      "profiles": [
+        {
+          "profile_key": "ips_empress_cad_pending_current_ifu_thickness",
+          "restoration_type": "pending",
+          "indication_scope": "IPS Empress CAD chairside CAD/CAM; indicaciones generales de restauraciones unitarias/inlays/onlays/veneers/crowns identificadas, espesor por zona pendiente de IFU vigente.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "facial_cervical",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "ivoclar_ips_empress_cad_product_page_2026_07_04",
+                "ivoclar_ips_empress_cad_brochure_pdf_2026_07_04",
+                "ivoclar_ips_empress_cad_scientific_pdf_2026_07_04"
+              ],
+              "technical_action": "No colorear como aceptado/rechazado. Falta IFU/ficha tecnica vigente con espesor minimo para IPS Empress CAD en cervical facial.",
+              "caveat": "Pendiente de fuente de espesor; fuentes revisadas identifican material e indicaciones, no tabla de preparacion."
+            },
+            {
+              "zone_key": "facial_middle",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "ivoclar_ips_empress_cad_product_page_2026_07_04",
+                "ivoclar_ips_empress_cad_brochure_pdf_2026_07_04",
+                "ivoclar_ips_empress_cad_scientific_pdf_2026_07_04"
+              ],
+              "technical_action": "Mostrar gris/baja confianza para zona media. No hay requisito de espesor verificado para codificar tallado.",
+              "caveat": "No extrapolar desde IPS e.max CAD ni desde estudios de profundidad circular."
+            },
+            {
+              "zone_key": "incisal_edge",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "ivoclar_ips_empress_cad_product_page_2026_07_04",
+                "ivoclar_ips_empress_cad_brochure_pdf_2026_07_04",
+                "ivoclar_ips_empress_cad_scientific_pdf_2026_07_04"
+              ],
+              "technical_action": "Mostrar gris/baja confianza para incisal. Buscar IFU vigente antes de definir reduccion.",
+              "caveat": "Sin minimo incisal verificado para IPS Empress CAD."
+            }
+          ]
+        }
+      ],
+      "activation_blocker": "Product identity verified, but preparation/minimum thickness source not found. Viewer must keep gray until current IFU/ficha tecnica is found."
+    },
+    {
+      "material_key": "amt_pending",
+      "display_name": "AMT (pendiente de identificacion)",
+      "family": "pending_identification",
+      "manufacturer": "pending_exact_product",
+      "overall_status": "blocked_until_product_and_ifu_identified",
+      "caveat": "AMT no queda identificado como producto ceramico trazable. No cargar espesores ni colorear como apto/no apto hasta tener fabricante, nombre comercial exacto e IFU/ficha tecnica con tabla de preparacion.",
+      "profiles": [
+        {
+          "profile_key": "amt_pending_identification_guardrail",
+          "restoration_type": "pending",
+          "indication_scope": "Placeholder tecnico para impedir que AMT use reglas heredadas o estimadas.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "facial_cervical",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "local_project_amt_identifier_audit_2026_07_05"
+              ],
+              "technical_action": "Mostrar gris. Falta identificar AMT y fuente IFU/ficha tecnica para cervical facial.",
+              "caveat": "No extrapolar desde IPS e.max, Empress ni demo_veneer."
+            },
+            {
+              "zone_key": "facial_middle",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "local_project_amt_identifier_audit_2026_07_05"
+              ],
+              "technical_action": "Mostrar gris. No hay minimo/ideal/limite verificable para zona media.",
+              "caveat": "AMT sigue bloqueado por falta de producto exacto."
+            },
+            {
+              "zone_key": "incisal_edge",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": null,
+                "ideal": null,
+                "upper_limit": null
+              },
+              "evidence_status": "pending_source",
+              "source_refs": [
+                "local_project_amt_identifier_audit_2026_07_05"
+              ],
+              "technical_action": "Mostrar gris. No definir tallado incisal para AMT sin IFU.",
+              "caveat": "No usar como decision tecnica ni laboratorio final."
+            }
+          ]
+        }
+      ],
+      "required_identification_fields": [
+        "manufacturer",
+        "exact_product_name",
+        "ceramic_family",
+        "restoration_indication",
+        "ifu_or_technical_sheet_url",
+        "source_version_or_publication_date"
+      ]
+    },
+    {
+      "material_key": "demo_veneer_legacy",
+      "display_name": "Demo tecnica veneer historica",
+      "family": "viewer_demo_not_clinical",
+      "manufacturer": "none",
+      "overall_status": "estimated_legacy_demo",
+      "caveat": "Perfil conservado para reproducir el comportamiento del visor historico. No tiene respaldo IFU y no debe presentarse como regla clinica.",
+      "profiles": [
+        {
+          "profile_key": "demo_veneer_legacy_current_engine_map",
+          "restoration_type": "demo_veneer",
+          "indication_scope": "Compatibilidad con prep_engine.py actual.",
+          "default_for_viewer": false,
+          "zones": [
+            {
+              "zone_key": "facial_cervical",
+              "legacy_zone_map": "Cervical",
+              "required_mm": {
+                "min": 0.2,
+                "ideal": 0.3,
+                "upper_limit": 0.3
+              },
+              "evidence_status": "estimated_legacy_demo",
+              "source_refs": [],
+              "caveat": "Demo historica sin IFU."
+            },
+            {
+              "zone_key": "facial_middle",
+              "legacy_zone_map": "Medio",
+              "required_mm": {
+                "min": 0.5,
+                "ideal": 0.7,
+                "upper_limit": 0.7
+              },
+              "evidence_status": "estimated_legacy_demo",
+              "source_refs": [],
+              "caveat": "Demo historica sin IFU."
+            },
+            {
+              "zone_key": "incisal_edge",
+              "legacy_zone_map": "Incisal",
+              "required_mm": {
+                "min": 0.4,
+                "ideal": 0.5,
+                "upper_limit": 0.5
+              },
+              "evidence_status": "estimated_legacy_demo",
+              "source_refs": [],
+              "caveat": "Demo historica sin IFU."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "next_coding_step": {
+    "summary": "Use material_rules_2026-07-06.json as active ruleset and expose viewer_action_matrix messages in CSV/JSON/UI rows.",
+    "mapping_to_current_engine": {
+      "Cervical": "zones[].legacy_zone_map == Cervical",
+      "Medio": "zones[].legacy_zone_map == Medio",
+      "Incisal": "zones[].legacy_zone_map == Incisal"
+    },
+    "minimum_logic": [
+      "If evidence_status == pending_source, force gray low_confidence.",
+      "If source_quality is manufacturer_primary_pdf_legacy_preparation_guide, show caveat 'confirm current eIFU/IFU' in every row.",
+      "If ideal is null, classify green at measured >= min unless registration confidence is low.",
+      "If upper_limit is null, do not classify over-space from material alone.",
+      "Always export caveat and source_refs with every row."
+    ]
+  },
+  "release_note": "Adds a codable viewer action matrix for IPS e.max CAD veneer and pending-source materials. No new clinical thickness values were added; e.max CAD values remain from the existing Ivoclar/CEREC 2015 source with current eIFU pending.",
+  "viewer_action_matrix": {
+    "purpose": "Translate one measured tooth-zone row into a clear lab/planning action without changing the underlying clinical thickness source.",
+    "applies_to_profiles": [
+      "ips_emax_cad_veneer_cerec_2015_primary_preparation",
+      "ips_emax_cad",
+      "amt_pending_identification_guardrail",
+      "ips_empress_cad_pending_current_ifu_thickness"
+    ],
+    "row_input": [
+      "tooth_fdi",
+      "zone_key",
+      "measured_mm",
+      "material_key",
+      "profile_key",
+      "restoration_type",
+      "zone_rule.required_mm",
+      "zone_rule.evidence_status",
+      "registration_confidence"
+    ],
+    "priority_order": [
+      "pending_source_or_low_registration",
+      "insufficient_space",
+      "borderline_minimum_only",
+      "within_minimum_only",
+      "ideal_window",
+      "excess_space"
+    ],
+    "rules": [
+      {
+        "action_key": "pending_source_or_low_registration",
+        "condition": "zone_rule.evidence_status == pending_source OR registration_confidence == low",
+        "color_status": "low_confidence",
+        "hex": "#8ba6b2",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | {material_key} | requerido pendiente o no fiable | gris | No usar como decision tecnica final: falta fuente IFU/ficha tecnica o confianza de registro.",
+        "technical_action": "Bloquear semaforo clinico y exportar caveat/source_refs para revision."
+      },
+      {
+        "action_key": "insufficient_space",
+        "condition": "measured_mm < required_min_mm",
+        "color_status": "insufficient_space",
+        "hex": "#ff2d7d",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | requerido minimo {required_min_mm} mm | rojo | Falta espacio para el perfil seleccionado.",
+        "technical_action": "Revisar reduccion planificada, wax-up, indicacion o material; no aceptar como compatible solo por color."
+      },
+      {
+        "action_key": "borderline_minimum_only",
+        "condition": "required_ideal_mm is null AND measured_mm >= required_min_mm AND measured_mm <= required_min_mm + 0.05",
+        "color_status": "borderline",
+        "hex": "#fff34a",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | minimo {required_min_mm} mm | amarillo | Zona al limite del minimo documentado.",
+        "technical_action": "Confirmar fuente vigente, adhesion/cementacion, sustrato y oclusion antes de aceptar."
+      },
+      {
+        "action_key": "within_minimum_only",
+        "condition": "required_ideal_mm is null AND measured_mm > required_min_mm + 0.05",
+        "color_status": "within_target",
+        "hex": "#24ff9a",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | minimo {required_min_mm} mm | verde | Espacio compatible con el minimo documentado.",
+        "technical_action": "Mantener caveat visible: compatibilidad tecnica, no diagnostico ni sustituto de IFU vigente."
+      },
+      {
+        "action_key": "ideal_window",
+        "condition": "required_ideal_mm exists AND measured_mm >= required_ideal_mm AND (upper_limit_mm is null OR measured_mm <= upper_limit_mm)",
+        "color_status": "within_target",
+        "hex": "#24ff9a",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | ideal {required_ideal_mm} mm | verde | Dentro de ventana objetivo.",
+        "technical_action": "Aceptar solo como planificacion tecnica si registro/fuente/caso son validos."
+      },
+      {
+        "action_key": "excess_space",
+        "condition": "upper_limit_mm exists AND measured_mm > upper_limit_mm",
+        "color_status": "over_reduced_or_excess_space",
+        "hex": "#bb4dff",
+        "viewer_message_template": "Diente {tooth_fdi} | {zone_key} | medido {measured_mm} mm | limite superior {upper_limit_mm} mm | morado | Posible sobre-espacio o reduccion excesiva.",
+        "technical_action": "Revisar soporte, diseno restaurador, cemento y necesidad de compensacion."
+      }
+    ],
+    "clinical_boundary": "La matriz traduce reglas y mediciones a acciones de laboratorio/planificacion; no diagnostica ni valida indicacion clinica."
+  },
+  "pending_material_protocol": {
+    "purpose": "Make unresolved or source-pending materials safe for the viewer without inventing clinical requirements.",
+    "applies_when": [
+      "material identity is ambiguous, e.g. AMT without manufacturer/product line",
+      "product is identified but no preparation/minimum-thickness table was found in IFU or ficha tecnica",
+      "only scientific depths, marketing pages, or secondary snippets are available"
+    ],
+    "viewer_behavior": {
+      "required_min_mm": null,
+      "required_ideal_mm": null,
+      "upper_limit_mm": null,
+      "evidence_status": "pending_source",
+      "color_status": "low_confidence",
+      "color_key": "gray",
+      "technical_action": "No usar como decision tecnica final. Falta producto exacto o fuente IFU/ficha tecnica con espesor por zona.",
+      "must_show_caveat": true
+    },
+    "required_before_activation": [
+      "manufacturer",
+      "exact commercial product name",
+      "restoration indication",
+      "source document title/version/date",
+      "minimum thickness values by zone or explicit global minimum",
+      "cementation/substrate caveats when present in source"
+    ]
+  },
+  "viewer_row_examples": [
+    {
+      "tooth_fdi": 11,
+      "zone_key": "facial_middle",
+      "measured_mm": 0.52,
+      "material_key": "ips_emax_cad",
+      "restoration_type": "veneer",
+      "required_min_mm": 0.6,
+      "required_ideal_mm": null,
+      "upper_limit_mm": null,
+      "evidence_status": "verified",
+      "source_refs": [
+        "ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"
+      ],
+      "color_status": "insufficient_space",
+      "technical_action": "Falta espacio frente al minimo de veneer IPS e.max CAD de la guia Ivoclar/CEREC 2015.",
+      "caveat": "Confirmar eIFU/IFU vigente antes de decision clinica."
+    },
+    {
+      "tooth_fdi": 11,
+      "zone_key": "facial_middle",
+      "measured_mm": 0.52,
+      "material_key": "amt_pending",
+      "restoration_type": "pending",
+      "required_min_mm": null,
+      "required_ideal_mm": null,
+      "upper_limit_mm": null,
+      "evidence_status": "pending_source",
+      "source_refs": [
+        "local_project_amt_identifier_audit_2026_07_05"
+      ],
+      "color_status": "low_confidence",
+      "technical_action": "No usar como decision tecnica: AMT no tiene producto/fabricante/IFU verificados.",
+      "caveat": "Pendiente confirmar que significa AMT y localizar ficha tecnica."
+    }
+  ],
+  "implementation_notes": {
+    "active_json": "material_rules_2026-07-06.json",
+    "today_focus": "IPS e.max CAD veneer viewer action matrix plus pending-source gray protocol",
+    "do_not_do": [
+      "Do not reuse demo_veneer ranges for AMT.",
+      "Do not infer Empress CAD thickness from IPS e.max CAD.",
+      "Do not turn scientific study preparation depths into IFU requirements."
+    ],
+    "next_coding_step": "Map viewer_action_matrix.action_key to exported CSV/JSON technical_action so each row shows diente, zona, medido, requerido, color and action."
+  }
+}

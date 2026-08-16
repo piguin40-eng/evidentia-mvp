@@ -1,0 +1,114 @@
+{
+  "schema_version": "0.1.0",
+  "created_at": "2026-08-10",
+  "owner_role": "Yolito Ceram",
+  "project": "BigColor PREP 2",
+  "scope": "Fixture exportable para comprobar que el visor no inventa espesor requerido cuando falta una regla exacta material/perfil/zona. Planificacion tecnica/laboratorio; no diagnostico.",
+  "units": "mm",
+  "ruleset_dependency": "material_rules_2026-08-09",
+  "rule_or_material_worked": "blocked_missing_material_zone_rule en salida CSV/visor",
+  "clinical_thickness_values_added": false,
+  "verified_data": [
+    {
+      "claim": "Una fila exportada sin cruce exacto material_key + profile_key + zone_key debe quedar bloqueada en gris.",
+      "basis": "Contrato local ya versionado en material_rules_2026-08-09 y QA de qa_viewer_contract.py.",
+      "source_refs": [
+        "local_viewer_rule_contract_audit_2026_07_12",
+        "viewer_missing_material_zone_rule_fixture_2026_08_09"
+      ],
+      "clinical_thickness_truth": false
+    },
+    {
+      "claim": "Cuando el cruce falta, required_min_mm, required_ideal_mm, upper_limit_mm y deficit_mm deben ser null.",
+      "basis": "Guardrail de no heredar espesores de otro material, perfil, restauracion ni zona.",
+      "source_refs": [
+        "viewer_strict_material_zone_join_contract_2026_08_08",
+        "viewer_missing_material_zone_rule_fixture_2026_08_09"
+      ],
+      "clinical_thickness_truth": false
+    }
+  ],
+  "pending_sources": [
+    "IPS e.max Press: IFU vigente por zona, ideales, limites y caveats de cementacion/sustrato/carga.",
+    "IPS e.max CAD: eIFU/IFU vigente que confirme o reemplace la guia Ivoclar/CEREC 2015.",
+    "IPS Empress CAD: IFU/ficha tecnica primaria vigente con espesores numericos por restauracion/zona.",
+    "AMT: fabricante, nombre comercial exacto, familia, via de fabricacion e IFU/ficha tecnica."
+  ],
+  "export_fixture": {
+    "csv_path": "outputs/yolito-missing-rule-export-fixture-2026-08-10/table.csv",
+    "required_columns": [
+      "tooth_fdi",
+      "zone_key",
+      "zone_label_es",
+      "measured_mm",
+      "material_key",
+      "profile_key",
+      "required_min_mm",
+      "required_ideal_mm",
+      "upper_limit_mm",
+      "deficit_mm",
+      "color_key",
+      "material_zone_join_status",
+      "source_trace_token",
+      "technical_action_es",
+      "caveat_es",
+      "viewer_sentence_es"
+    ],
+    "acceptance_checks": [
+      "source_trace_token debe ser blocked_missing_material_zone_rule.",
+      "material_zone_join_status debe ser missing_material_profile_zone_matrix_row.",
+      "required_min_mm, required_ideal_mm, upper_limit_mm y deficit_mm deben quedar vacios/null.",
+      "color_key debe ser gray.",
+      "viewer_sentence_es debe mostrar diente, zona, espesor medido, requerido pendiente y accion tecnica."
+    ],
+    "row_examples": [
+      {
+        "tooth_fdi": 11,
+        "zone_key": "palatal_axial_unmapped",
+        "zone_label_es": "palatino sin mapear",
+        "measured_mm": 0.64,
+        "material_key": "ips_emax_press",
+        "profile_key": "ips_emax_press_thin_veneer_primary_minimums",
+        "required_min_mm": null,
+        "required_ideal_mm": null,
+        "upper_limit_mm": null,
+        "deficit_mm": null,
+        "color_key": "gray",
+        "material_zone_join_status": "missing_material_profile_zone_matrix_row",
+        "source_trace_token": "blocked_missing_material_zone_rule",
+        "technical_action_es": "No colorear ni calcular deficit: falta regla exacta para IPS e.max Press / veneer fino / palatino sin mapear.",
+        "caveat_es": "No heredar el minimo global de veneer desde zonas labiales ni desde otro perfil.",
+        "viewer_sentence_es": "Diente 11, zona palatino sin mapear: medido 0.64 mm; requerido pendiente de regla material/zona; deficit sin deficit clinico calculable; color gray; accion: crear regla versionada exacta antes de colorear."
+      },
+      {
+        "tooth_fdi": 21,
+        "zone_key": "facial_cervical",
+        "zone_label_es": "cervical/labial",
+        "measured_mm": 0.82,
+        "material_key": "ips_emax_cad",
+        "profile_key": "ips_emax_cad_anterior_crown_cerec_2015_primary_preparation",
+        "required_min_mm": null,
+        "required_ideal_mm": null,
+        "upper_limit_mm": null,
+        "deficit_mm": null,
+        "color_key": "gray",
+        "material_zone_join_status": "missing_material_profile_zone_matrix_row",
+        "source_trace_token": "blocked_missing_material_zone_rule",
+        "technical_action_es": "No reutilizar la regla veneer facial_cervical para una corona anterior; falta fila exacta de corona/zona.",
+        "caveat_es": "La guia CEREC 2015 archivada sigue pendiente de eIFU vigente y no autoriza fallback entre perfiles.",
+        "viewer_sentence_es": "Diente 21, zona cervical/labial: medido 0.82 mm; requerido pendiente de regla material/zona; deficit sin deficit clinico calculable; color gray; accion: crear regla versionada exacta antes de colorear."
+      }
+    ]
+  },
+  "viewer_coding_contract": {
+    "human_readable_pattern": "Diente {tooth_fdi}, zona {zone_label_es}: medido {measured_mm} mm; requerido pendiente de regla material/zona; deficit sin deficit clinico calculable; color gray; accion: crear regla versionada exacta antes de colorear.",
+    "machine_rule": {
+      "when": "missing exact material_key + profile_key + zone_key",
+      "required_min_mm": null,
+      "deficit_mm": null,
+      "color_key": "gray",
+      "source_trace_token": "blocked_missing_material_zone_rule"
+    }
+  },
+  "next_step": "Conectar este fixture CSV a qa_viewer_contract.py o a un smoke especifico para comprobar la exportacion del visor/API, no solo el contrato JSON."
+}

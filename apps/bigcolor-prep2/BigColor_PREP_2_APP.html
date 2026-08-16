@@ -1,0 +1,2388 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BigColor PREP 2</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root{
+      --bg:#080a0c;
+      --panel:#11171b;
+      --panel2:#172126;
+      --line:#2f6f73;
+      --text:#f3f8f7;
+      --muted:#9fb4b3;
+      --green:#3ed08b;
+      --yellow:#e3c24a;
+      --red:#ff8b2f;
+      --purple:#8d7cf0;
+      --blue:#52c7d8;
+      --orange:#d9913d;
+      --gray:#7f9194;
+      --glow-cyan:rgba(82,199,216,.22);
+      --glow-pink:rgba(227,194,74,.14);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:linear-gradient(135deg,#080a0c 0%,#10181b 48%,#060708 100%);
+      color:var(--text);
+      overflow:hidden;
+    }
+    #app{position:fixed; inset:0; display:grid; grid-template-columns:340px minmax(520px,1fr) 420px;}
+    aside{
+      background:
+        linear-gradient(180deg,rgba(17,23,27,.98),rgba(8,10,12,.98));
+      border-right:1px solid rgba(82,199,216,.26);
+      padding:16px;
+      overflow:auto;
+      z-index:2;
+      box-shadow:inset -1px 0 0 rgba(227,194,74,.12);
+    }
+    #right{border-right:0; border-left:1px solid rgba(227,194,74,.22); box-shadow:inset 1px 0 0 rgba(82,199,216,.14);}
+    h1{
+      font-size:20px;
+      margin:0 0 4px;
+      letter-spacing:0;
+      color:#ffffff;
+      text-shadow:0 0 14px var(--glow-cyan);
+    }
+    h2{font-size:13px; margin:18px 0 8px; color:#52c7d8; font-weight:800; text-transform:uppercase; text-shadow:0 0 12px var(--glow-cyan);}
+    p{font-size:13px; line-height:1.4; color:var(--muted); margin:6px 0;}
+    .nav{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin:12px 0 14px;}
+    .nav a{border:1px solid rgba(82,199,216,.30); border-radius:8px; padding:8px 6px; color:#dff6f3; text-decoration:none; text-align:center; font-size:12px; background:rgba(82,199,216,.06);}
+    .nav a.active{border-color:rgba(227,194,74,.58); color:#fff0b8; background:rgba(227,194,74,.10);}
+    label{display:block; font-size:12px; color:var(--muted); margin:10px 0 6px;}
+    .file-picker{
+      display:grid;
+      gap:8px;
+      margin-top:8px;
+    }
+    .file-input-wrap{
+      position:relative;
+      display:block;
+      border:1px solid rgba(82,199,216,.42);
+      background:linear-gradient(180deg,rgba(12,17,20,.98),rgba(7,10,12,.98));
+      color:var(--text);
+      border-radius:8px;
+      padding:12px 12px 11px;
+      min-height:52px;
+      box-shadow:0 0 0 1px rgba(227,194,74,.07), 0 0 18px rgba(82,199,216,.10);
+      cursor:pointer;
+    }
+    .file-input-wrap strong{display:block; font-size:13px; color:#eaf7f5;}
+    .file-input-wrap span{display:block; margin-top:2px; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+    .file-input-wrap input{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      opacity:0;
+      cursor:pointer;
+    }
+    input,select,button{
+      width:100%;
+      border:1px solid rgba(82,199,216,.32);
+      background:#0c1114;
+      color:var(--text);
+      border-radius:8px;
+      padding:10px;
+      font-size:13px;
+      box-shadow:0 0 0 1px rgba(227,194,74,.07), 0 0 18px rgba(82,199,216,.06);
+    }
+    button{
+      cursor:pointer;
+      background:linear-gradient(135deg,#52c7d8 0%,#2f6f73 52%,#d9913d 100%);
+      color:#ffffff;
+      border-color:rgba(255,255,255,.28);
+      font-weight:700;
+      margin-top:10px;
+      text-shadow:0 1px 8px rgba(0,0,0,.45);
+      box-shadow:0 0 18px rgba(82,199,216,.18), 0 0 22px rgba(227,194,74,.10);
+    }
+    button:disabled{opacity:.45; cursor:not-allowed}
+    #stage{
+      position:relative;
+      min-width:0;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(82,199,216,.18), transparent 34%),
+        linear-gradient(180deg, #082747 0%, #07131b 72%, #040607 100%);
+    }
+    canvas{display:block; width:100%; height:100%; touch-action:none;}
+    .row{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+    .stat{
+      border:1px solid rgba(82,199,216,.34);
+      background:linear-gradient(180deg,rgba(14,25,27,.92),rgba(8,11,13,.92));
+      border-radius:8px;
+      padding:10px;
+      min-height:64px;
+      box-shadow:0 0 20px rgba(82,199,216,.10);
+    }
+    .stat strong{display:block; font-size:18px; margin-bottom:2px;}
+    .stat span{font-size:12px; color:var(--muted);}
+    .legend{display:grid; gap:6px; margin-top:8px;}
+    .key{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
+    .swatch{width:18px; height:10px; border-radius:99px;}
+    #hoverCard{
+      position:absolute;
+      left:16px;
+      bottom:16px;
+      min-width:280px;
+      max-width:420px;
+      padding:12px;
+      border-radius:8px;
+      border:1px solid rgba(82,199,216,.48);
+      background:linear-gradient(135deg,rgba(17,23,27,.94),rgba(5,7,8,.88));
+      backdrop-filter:blur(10px);
+      z-index:5;
+      pointer-events:none;
+      box-shadow:0 0 24px rgba(82,199,216,.16), 0 0 32px rgba(227,194,74,.10);
+    }
+    #hoverCard .big{font-size:26px; font-weight:900; color:#3ed08b; text-shadow:0 0 14px rgba(62,208,139,.32);}
+    #hoverCard .muted{color:var(--muted); font-size:12px;}
+    table{width:100%; border-collapse:collapse; font-size:11px;}
+    th,td{border-bottom:1px solid rgba(82,199,216,.22); padding:6px 4px; text-align:left;}
+    th{color:#52c7d8; font-weight:800;}
+    tr.trace-pending td,tr.trace-secondary td{background:rgba(139,166,178,.10); color:#d7e1e4;}
+    tr.trace-secondary td{box-shadow:inset 3px 0 0 rgba(255,243,74,.44);}
+    tr.trace-pending td{box-shadow:inset 3px 0 0 rgba(139,166,178,.58);}
+    .rule-meta{color:var(--muted); max-width:92px; overflow-wrap:anywhere;}
+    .pill{display:inline-flex; align-items:center; border:1px solid rgba(227,194,74,.42); border-radius:999px; padding:4px 8px; font-size:11px; color:#fff0b8; margin:4px 4px 0 0; background:rgba(227,194,74,.08);}
+    .smallbox{border:1px solid rgba(82,199,216,.24); border-radius:8px; padding:10px; background:rgba(82,199,216,.05); font-size:12px; line-height:1.35; color:var(--muted);}
+    .material-summary{display:grid; gap:8px;}
+    .material-summary-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+    .material-summary-title{font-size:12px; font-weight:800; color:#eaf7f5;}
+    .material-summary-copy{white-space:pre-wrap;}
+    .material-badge{display:inline-flex; align-items:center; max-width:48%; border-radius:999px; padding:4px 8px; font-size:11px; font-weight:800; line-height:1.2; text-align:left; overflow-wrap:anywhere; border:1px solid rgba(139,166,178,.42); color:#d7e1e4; background:rgba(139,166,178,.10);}
+    .material-badge-active-primary-global-minimum{border-color:rgba(62,208,139,.48); color:#dffced; background:rgba(62,208,139,.10);}
+    .material-badge-active-primary-legacy-with-caveat{border-color:rgba(227,194,74,.55); color:#fff0b8; background:rgba(227,194,74,.12);}
+    .material-badge-candidate-secondary-inactive,.material-badge-blocked-pending-source,.material-badge-blocked-unidentified-material{border-color:rgba(139,166,178,.50); color:#d7e1e4; background:rgba(139,166,178,.13);}
+    .analysis-state{display:grid; gap:8px;}
+    .analysis-state-grid{display:grid; grid-template-columns:1fr 1fr; gap:6px;}
+    .analysis-state-grid span{display:block; min-width:0; border:1px solid rgba(82,199,216,.18); border-radius:8px; padding:6px; background:rgba(6,10,12,.34); overflow-wrap:anywhere;}
+    .analysis-state-grid strong{display:block; color:#eaf7f5; font-size:10px; text-transform:uppercase; letter-spacing:0;}
+    .analysis-state-note{color:#ffe1c8;}
+    .qa-gate-blocked{border-color:rgba(255,139,47,.55); background:rgba(255,139,47,.08); color:#ffe1c8;}
+    .qa-gate-pass{border-color:rgba(62,208,139,.45); background:rgba(62,208,139,.08); color:#dffced;}
+    .qa-ranking{display:grid; gap:8px;}
+    .qa-ranking-kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:6px;}
+    .qa-ranking-kpis span{display:block; border:1px solid rgba(82,199,216,.24); border-radius:8px; padding:7px 6px; background:rgba(82,199,216,.05); color:#d7e1e4;}
+    .qa-ranking-kpis strong{display:block; color:#fff0b8; font-size:16px;}
+    .qa-ranking-list{margin:0; padding-left:16px;}
+    .qa-ranking-list li{margin:3px 0;}
+    .qa-ranking-table{font-size:10px;}
+    .visual-card{
+      position:relative;
+      min-height:118px;
+      border-radius:8px;
+      overflow:hidden;
+      border:1px solid rgba(82,199,216,.24);
+      background:#050708;
+      margin-bottom:12px;
+    }
+    .visual-card img{width:100%; height:136px; object-fit:cover; display:block; opacity:.92;}
+    .visual-card::after{content:""; position:absolute; inset:0; background:linear-gradient(180deg,transparent 38%,rgba(5,7,8,.82) 100%);}
+    .visual-card span{position:absolute; left:10px; bottom:9px; z-index:1; font-size:12px; color:#eaf7f5; font-weight:800; text-shadow:0 1px 8px rgba(0,0,0,.75);}
+    .warn{color:#fff34a}
+    .ok{color:#24ff9a}
+    .bad{color:#ff2d7d}
+    #status{white-space:pre-wrap; font-size:12px; color:var(--muted); line-height:1.4;}
+    @media(max-width:980px){
+      body{overflow:auto; background:#080a0c;}
+      #app{position:relative; inset:auto; display:block; min-height:100vh; overflow:visible;}
+      aside{border-right:0; border-bottom:1px solid var(--line); overflow:visible;}
+      #right{border-left:0;}
+      #stage{height:54vh; min-height:380px;}
+      .nav{position:sticky; top:0; z-index:10; padding:8px 0; margin:8px 0 12px; background:linear-gradient(180deg,rgba(17,23,27,.98),rgba(17,23,27,.88));}
+      .row{grid-template-columns:1fr;}
+      .file-input-wrap{min-height:60px;}
+      button{min-height:48px;}
+      #right{display:flex; flex-direction:column;}
+      #right .visual-card{order:20; margin-top:12px;}
+      #right table{font-size:10px;}
+      #right th,#right td{padding:5px 3px;}
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1>BigColor PREP 2</h1>
+    <p>Aplicacion de medicion preoperatorio / encerado para mapa tecnico de espesor.</p>
+    <nav class="nav" aria-label="BigColor PREP">
+      <a class="active" href="./BigColor_PREP_2_APP.html">Visor</a>
+      <a href="./BigColor_PREP_2_CASE.html">Caso prueba</a>
+      <a href="./outputs/prep-050-ascent-2026-07-11-v2/table.csv">CSV</a>
+    </nav>
+
+    <h2>STL</h2>
+    <div class="file-picker">
+      <label class="file-input-wrap" for="preopFile">
+        <strong>1. Cargar STL preoperatorio</strong>
+        <span id="preopFileName">Toca aqui y selecciona el archivo .stl</span>
+        <input id="preopFile" type="file" accept=".stl,.STL,model/stl,application/sla" />
+      </label>
+      <label class="file-input-wrap" for="waxupFile">
+        <strong>2. Cargar STL encerado / wax-up</strong>
+        <span id="waxupFileName">Toca aqui y selecciona el archivo .stl</span>
+        <input id="waxupFile" type="file" accept=".stl,.STL,model/stl,application/sla" />
+      </label>
+      <label class="file-input-wrap" for="landmarksFile">
+        <strong>3. Landmarks JSON opcional</strong>
+        <span id="landmarksFileName">Solo para QA tecnico revisable</span>
+        <input id="landmarksFile" type="file" accept=".json,application/json" />
+      </label>
+    </div>
+
+    <h2>Material</h2>
+    <select id="material"></select>
+    <div id="materialInfo" class="smallbox" style="margin-top:8px">Cargando reglas de material...</div>
+    <div class="row">
+      <div>
+        <label>Arcada</label>
+        <select id="arch">
+          <option value="S">Superior</option>
+          <option value="I">Inferior</option>
+        </select>
+      </div>
+      <div>
+        <label>Unidad STL</label>
+        <select id="inputUnit">
+          <option value="mm">mm</option>
+          <option value="cm">cm</option>
+          <option value="m">m</option>
+          <option value="micron">micron</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Motor</label>
+        <select id="metricMode">
+          <option value="engine">Python estable</option>
+          <option value="browser">Navegador rapido</option>
+        </select>
+      </div>
+      <div>
+        <label>Metodo Python</label>
+        <select id="measurementMethod">
+          <option value="fast_vertex">Rapido vertices</option>
+          <option value="normal_ray">Normal-ray QA</option>
+          <option value="exact_surface">Superficie exacta</option>
+        </select>
+      </div>
+      <div>
+        <label>Direccion normal-ray</label>
+        <select id="rayDirection">
+          <option value="bidirectional">Bidireccional</option>
+          <option value="plus_normal">+ normal</option>
+          <option value="minus_normal">- normal</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+      <input id="exactSurface" type="checkbox" style="width:auto;min-width:16px" />
+      <span>Forzar superficie exacta si la malla lo permite</span>
+    </label>
+
+    <div class="row">
+      <button id="loadDemo">Cargar demo</button>
+      <button id="analyze" disabled>Medir espesores</button>
+    </div>
+    <div class="row">
+      <button id="exportCsv" disabled>Exportar CSV</button>
+      <button id="exportJson" disabled>Exportar JSON</button>
+    </div>
+
+    <h2>Estado</h2>
+    <div id="status">Carga dos STL o usa la demo incluida.</div>
+
+    <h2>Leyenda</h2>
+    <div class="legend">
+      <div class="key"><span class="swatch" style="background:#7a0403"></span> 0,00 mm: falta espacio / bajo espesor</div>
+      <div class="key"><span class="swatch" style="background:#f36315"></span> 0,50 mm: objetivo PREP</div>
+      <div class="key"><span class="swatch" style="background:#a4fc3b"></span> 1,00 mm: espesor medio</div>
+      <div class="key"><span class="swatch" style="background:#39a2fc"></span> 1,50 mm: espesor alto</div>
+      <div class="key"><span class="swatch" style="background:#30123b"></span> 2,00 mm o mas: sobre-espesor</div>
+      <div class="key"><span class="swatch" style="background:var(--gray)"></span> Baja confianza / fuente pendiente</div>
+      <div class="key"><span class="swatch" style="background:#85959a"></span> Preoperatorio</div>
+    </div>
+
+    <p class="warn">QA tecnico: objetivo demo 0,5 mm. La precision final depende del registro, las unidades y la calidad de las mallas. El modo Python usa prep_engine.py; el modo navegador es orientativo.</p>
+  </aside>
+
+  <main id="stage">
+    <div id="hoverCard">
+      <div class="muted">Pasa el cursor por el encerado</div>
+      <div class="big">Sin lectura</div>
+      <div class="muted" id="hoverMeta">Carga y analiza dos mallas.</div>
+    </div>
+  </main>
+
+  <aside id="right">
+    <h2>Resumen</h2>
+    <div id="engineBadge" class="smallbox" style="margin-bottom:10px">Motor pendiente de ejecutar.</div>
+    <div id="qaGateBox" class="smallbox qa-gate" data-blocked-status="blocked_for_clinical_use" style="margin-bottom:10px">Puerta QA: pendiente de motor Python.</div>
+    <div id="analysisStateBox" class="smallbox analysis-state" style="margin-bottom:10px">Estado de analisis: pendiente de motor Python.</div>
+    <h2>QA ICP local</h2>
+    <div id="localRankingBox" class="smallbox qa-ranking" style="margin-bottom:10px">Panel Pedro/Pekis pendiente de cargar.</div>
+    <div class="row">
+      <div class="stat"><strong id="p50">-</strong><span>P50 espesor</span></div>
+      <div class="stat"><strong id="p95">-</strong><span>P95 espesor</span></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="stat"><strong id="lowPct">-</strong><span>Zonas criticas</span></div>
+      <div class="stat"><strong id="meshCount">-</strong><span>Vertices wax-up</span></div>
+    </div>
+
+    <h2>Perfil activo</h2>
+    <div id="rangePills"></div>
+
+    <h2>Tabla por zona</h2>
+    <table>
+      <thead><tr><th>Diente</th><th>Zona</th><th>P50</th><th>Def.</th><th>Decision</th><th>Trazabilidad</th></tr></thead>
+      <tbody id="zoneRows"></tbody>
+    </table>
+    <div class="visual-card" style="margin-top:12px">
+      <img src="./assets/visuals/bigcolor-upper-arch-chromatic-map.jpg" alt="" />
+      <span>Mapa cromático BigColor PREP</span>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+
+const DEMO_PREOP = "./assets/preoperatorio_sup.stl";
+const DEMO_WAXUP = "./assets/encerado_sup.stl";
+const MATERIAL_RULES_URL = "./material_rules/material_rules_2026-08-16.json";
+const LOCAL_RANKING_URL = "./api/local-ranking";
+const REQUIRED_THICKNESS_MATRIX_KEY = "viewer_required_thickness_matrix_2026_07_25";
+const ROW_DECISION_RESOLVER_KEY = "viewer_row_decision_resolver_2026_07_26";
+const MATERIAL_ZONE_READOUT_CONTRACT_KEY = "viewer_material_zone_readout_contract_2026_07_27";
+const MATERIAL_RAG_ACTION_CONTRACT_KEY = "viewer_row_rag_action_contract_2026_07_28";
+const MATERIAL_ZONE_REQUIREMENTS_KEY = "viewer_codable_material_zone_requirements_2026_07_29";
+const MATERIAL_SOURCE_HANDOFF_KEY = "viewer_source_handoff_2026_07_30";
+const MATERIAL_DECISION_GATE_KEY = "viewer_material_decision_gate_2026_07_31";
+const VISIBLE_ROW_OUTPUT_CONTRACT_KEY = "viewer_visible_row_output_contract_2026_08_01";
+const TECHNICAL_ACTION_THRESHOLDS_KEY = "viewer_technical_action_thresholds_2026_08_02";
+const ROW_RESOLUTION_FIXTURE_KEY = "viewer_row_resolution_fixture_2026_08_03";
+const PRIMARY_SOURCE_LOCK_MATRIX_KEY = "viewer_primary_source_lock_matrix_2026_08_04";
+const ROW_SOURCE_TRACE_CONTRACT_KEY = "viewer_row_source_trace_contract_2026_08_05";
+const MATERIAL_ZONE_REQUIREMENT_ROW_CONTRACT_KEY = "viewer_material_zone_requirement_row_contract_2026_08_07";
+const STRICT_MATERIAL_ZONE_JOIN_CONTRACT_KEY = "viewer_strict_material_zone_join_contract_2026_08_08";
+const MISSING_MATERIAL_ZONE_RULE_FIXTURE_KEY = "viewer_missing_material_zone_rule_fixture_2026_08_09";
+const ROW_TECHNICAL_SENTENCE_CONTRACT_KEY = "viewer_row_technical_sentence_contract_2026_08_06";
+const MATERIAL_ZONE_ROW_SCHEMA_CONTRACT_KEY = "viewer_material_zone_row_schema_contract_2026_08_16";
+const FALLBACK_MATERIAL_PROFILES = {
+  demo_veneer: {
+    profile_key: "demo_veneer",
+    material_key: "demo_veneer_legacy",
+    display_name: "BigColor PREP demo 0.5 mm",
+    restoration_type: "prep_demo_050",
+    overall_status: "estimated_prep_demo_target",
+    caveat: "Perfil de demo con objetivo unico 0.5 mm por tercio. No sustituye IFU ni validacion de registro.",
+    viewer_readiness_label: "demo local",
+    viewer_color_permission: "red_yellow_green_allowed_for_demo_only",
+    viewer_readiness_caveat: "Objetivo local de demo; no es una regla IFU de material.",
+    selector_badge: "demo local",
+    selector_badge_status: "active_primary_legacy_with_caveat",
+    zones: {
+      Cervical: {zone_key:"facial_cervical", required_min_mm:.5, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"estimated_prep_demo_050", source_refs:["miguel_bigcolor_prep_demo_target_2026_07_11"], source_scope:"viewer_demo_target_not_material_ifu", zone_mapping_status:"direct_three_thirds_demo_mapping", technical_action:"Si baja de 0.5 mm: tallar mas en esta zona. Si esta en 0.5 mm o mas: espacio compatible para la demo.", caveat:"Objetivo de demo BigColor PREP fijado por Miguel; no sustituye IFU ni validacion de registro."},
+      Medio: {zone_key:"facial_middle", required_min_mm:.5, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"estimated_prep_demo_050", source_refs:["miguel_bigcolor_prep_demo_target_2026_07_11"], source_scope:"viewer_demo_target_not_material_ifu", zone_mapping_status:"direct_three_thirds_demo_mapping", technical_action:"Si baja de 0.5 mm: tallar mas en esta zona. Si esta en 0.5 mm o mas: espacio compatible para la demo.", caveat:"Objetivo de demo BigColor PREP fijado por Miguel; no sustituye IFU ni validacion de registro."},
+      Incisal: {zone_key:"incisal_edge", required_min_mm:.5, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"estimated_prep_demo_050", source_refs:["miguel_bigcolor_prep_demo_target_2026_07_11"], source_scope:"viewer_demo_target_not_material_ifu", zone_mapping_status:"direct_three_thirds_demo_mapping", technical_action:"Si baja de 0.5 mm: tallar mas en esta zona. Si esta en 0.5 mm o mas: espacio compatible para la demo.", caveat:"Objetivo de demo BigColor PREP fijado por Miguel; no sustituye IFU ni validacion de registro."}
+    }
+  },
+  ips_emax_press: {
+    profile_key: "ips_emax_press_thin_veneer_primary_minimums",
+    material_key: "ips_emax_press",
+    display_name: "IPS e.max Press",
+    restoration_type: "thin_veneer",
+    overall_status: "partially_verified",
+    caveat: "Minimos desde pagina primaria Ivoclar. Confirmar IFU vigente, indicacion, cementacion, sustrato y registro.",
+    zones: {
+      Cervical: {zone_key:"facial_cervical", required_min_mm:.3, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_press_product_page_2026_07_02"], caveat:"Minimo veneer >=0.3 mm desde pagina primaria."},
+      Medio: {zone_key:"facial_middle", required_min_mm:.3, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_press_product_page_2026_07_02"], caveat:"Regla global de veneer >=0.3 mm aplicada a zona media."},
+      Incisal: {zone_key:"incisal_edge", required_min_mm:.3, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_press_product_page_2026_07_02"], caveat:"Confirmar IFU; dato secundario sugiere 0.4 mm incisal."}
+    }
+  },
+  ips_emax_cad: {
+    profile_key: "ips_emax_cad_veneer_cerec_2015_primary_preparation",
+    material_key: "ips_emax_cad",
+    display_name: "IPS e.max CAD",
+    restoration_type: "veneer",
+    overall_status: "primary_legacy_preparation_guide_verified_current_ifu_pending",
+    caveat: "PDF oficial Ivoclar/CEREC 2015. Confirmar eIFU/IFU vigente antes de uso clinico.",
+    zones: {
+      Cervical: {zone_key:"facial_cervical", required_min_mm:.6, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia Ivoclar/CEREC 2015; confirmar eIFU vigente."},
+      Medio: {zone_key:"facial_middle", required_min_mm:.6, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia Ivoclar/CEREC 2015; confirmar eIFU vigente."},
+      Incisal: {zone_key:"incisal_edge", required_min_mm:.7, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia Ivoclar/CEREC 2015; confirmar eIFU vigente."}
+    }
+  },
+  ips_emax_cad_anterior_crown_cerec_2015_primary_preparation: {
+    profile_key: "ips_emax_cad_anterior_crown_cerec_2015_primary_preparation",
+    material_key: "ips_emax_cad",
+    display_name: "IPS e.max CAD",
+    restoration_type: "anterior_crown",
+    overall_status: "primary_legacy_preparation_guide_verified_current_ifu_pending",
+    caveat: "PDF oficial Ivoclar/CEREC 2015. Confirmar eIFU/IFU vigente antes de uso clinico.",
+    zones: {
+      Cervical: {zone_key:"cervical_margin_or_chamfer", required_min_mm:1.0, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Mapeo provisional a Cervical; confirmar eIFU vigente."},
+      Medio: {zone_key:"axial_labial_lingual", required_min_mm:1.2, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia CEREC 2015; confirmar eIFU vigente."},
+      Incisal: {zone_key:"incisal_reduction", required_min_mm:1.5, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia CEREC 2015; confirmar eIFU vigente."}
+    }
+  },
+  ips_emax_cad_posterior_crown_cerec_2015_primary_preparation: {
+    profile_key: "ips_emax_cad_posterior_crown_cerec_2015_primary_preparation",
+    material_key: "ips_emax_cad",
+    display_name: "IPS e.max CAD",
+    restoration_type: "posterior_crown",
+    overall_status: "primary_legacy_preparation_guide_verified_current_ifu_pending",
+    caveat: "PDF oficial Ivoclar/CEREC 2015. Confirmar eIFU/IFU vigente antes de uso clinico.",
+    zones: {
+      Cervical: {zone_key:"cervical_margin_or_chamfer", required_min_mm:1.0, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Mapeo provisional a Cervical; confirmar eIFU vigente."},
+      Medio: {zone_key:"axial_circumferential", required_min_mm:1.0, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Guia CEREC 2015; confirmar eIFU vigente."},
+      Incisal: {zone_key:"occlusal_functional", required_min_mm:1.5, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"verified", source_refs:["ivoclar_ips_emax_cad_cerec_step_by_step_pdf_2015_2026_07_03"], caveat:"Oclusal mapeado provisionalmente a Incisal; confirmar eIFU vigente."}
+    }
+  },
+  amt_pending: {
+    profile_key: "amt_pending_identification_guardrail",
+    material_key: "amt_pending",
+    display_name: "AMT (pendiente de identificacion)",
+    restoration_type: "pending",
+    overall_status: "blocked_until_product_and_ifu_identified",
+    caveat: "AMT no identificado como producto trazable: requiere fabricante, nombre comercial exacto e IFU/ficha tecnica. No usar para decisiones de tallado.",
+    zones: {
+      Cervical: {zone_key:"facial_cervical", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["local_project_amt_identifier_audit_2026_07_05"], caveat:"No extrapolar desde IPS e.max, Empress ni demo_veneer."},
+      Medio: {zone_key:"facial_middle", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["local_project_amt_identifier_audit_2026_07_05"], caveat:"AMT sigue bloqueado por falta de producto exacto."},
+      Incisal: {zone_key:"incisal_edge", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["local_project_amt_identifier_audit_2026_07_05"], caveat:"No definir tallado incisal para AMT sin IFU."}
+    }
+  },
+  ips_empress_cad: {
+    profile_key: "ips_empress_cad_pending_current_ifu_thickness",
+    material_key: "ips_empress_cad",
+    display_name: "IPS Empress CAD",
+    restoration_type: "pending",
+    overall_status: "product_identified_thickness_pending_source",
+    caveat: "Producto/familia identificados en fuentes primarias Ivoclar. Espesores por zona pendientes de IFU/ficha tecnica vigente.",
+    zones: {
+      Cervical: {zone_key:"facial_cervical", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["ivoclar_ips_empress_cad_product_page_2026_07_04"], caveat:"No usar para semaforo hasta localizar IFU de espesores."},
+      Medio: {zone_key:"facial_middle", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["ivoclar_ips_empress_cad_product_page_2026_07_04"], caveat:"No extrapolar desde IPS e.max CAD ni desde ensayos cientificos."},
+      Incisal: {zone_key:"incisal_edge", required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:["ivoclar_ips_empress_cad_product_page_2026_07_04"], caveat:"Sin minimo incisal verificado para IPS Empress CAD."}
+    }
+  }
+};
+const MATERIAL_ORDER = [
+  "demo_veneer",
+  "ips_emax_press",
+  "ips_emax_cad",
+  "ips_emax_cad_anterior_crown_cerec_2015_primary_preparation",
+  "ips_emax_cad_posterior_crown_cerec_2015_primary_preparation",
+  "amt_pending",
+  "ips_empress_cad",
+  "ips_empress_cad_veneer_secondary_candidate_2026_07_08"
+];
+let materialProfiles = structuredClone(FALLBACK_MATERIAL_PROFILES);
+let materialRulesData = null;
+let rowDecisionResolver = null;
+let materialZoneReadoutContract = null;
+let materialRagActionContract = null;
+let materialZoneRequirementsContract = null;
+let materialSourceHandoffContract = null;
+let materialDecisionGateContract = null;
+let visibleRowOutputContract = null;
+let technicalActionThresholdsContract = null;
+let rowResolutionFixtureContract = null;
+let primarySourceLockMatrixContract = null;
+let materialZoneRowSchemaContract = null;
+
+const stage = document.getElementById("stage");
+const statusBox = document.getElementById("status");
+const analyzeBtn = document.getElementById("analyze");
+const loadDemoBtn = document.getElementById("loadDemo");
+const exportCsvBtn = document.getElementById("exportCsv");
+const exportJsonBtn = document.getElementById("exportJson");
+const preopFile = document.getElementById("preopFile");
+const waxupFile = document.getElementById("waxupFile");
+const landmarksFile = document.getElementById("landmarksFile");
+const preopFileName = document.getElementById("preopFileName");
+const waxupFileName = document.getElementById("waxupFileName");
+const landmarksFileName = document.getElementById("landmarksFileName");
+const materialSelect = document.getElementById("material");
+const archSelect = document.getElementById("arch");
+const inputUnit = document.getElementById("inputUnit");
+const metricMode = document.getElementById("metricMode");
+const measurementMethod = document.getElementById("measurementMethod");
+const rayDirection = document.getElementById("rayDirection");
+const exactSurface = document.getElementById("exactSurface");
+const materialInfo = document.getElementById("materialInfo");
+const rangePills = document.getElementById("rangePills");
+const hoverCard = document.getElementById("hoverCard");
+const hoverMeta = document.getElementById("hoverMeta");
+const zoneRows = document.getElementById("zoneRows");
+const engineBadge = document.getElementById("engineBadge");
+const analysisStateBox = document.getElementById("analysisStateBox");
+const localRankingBox = document.getElementById("localRankingBox");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x06050c);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 5000);
+camera.position.set(0, -90, 58);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+stage.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = .08;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x1c1428, 2.0));
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(70, -120, 145);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x8eefff, .95);
+fill.position.set(-120, 80, 70);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, .75);
+rim.position.set(0, 120, 110);
+scene.add(rim);
+
+const loader = new STLLoader();
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+let preopMesh = null;
+let waxupMesh = null;
+let lastDistances = null;
+let lastTeeth = null;
+let lastZones = null;
+let lastRows = [];
+let lastAnalysis = null;
+let waxupPositions = null;
+let demoLoaded = false;
+
+function normalizeZoneRule(zoneRule){
+  const required = zoneRule.required_mm || {};
+  return {
+    zone_key: zoneRule.zone_key || "all_zones",
+    required_min_mm: required.min ?? null,
+    required_ideal_mm: required.ideal ?? null,
+    upper_limit_mm: required.upper_limit ?? null,
+    evidence_status: zoneRule.evidence_status || "pending_source",
+    source_refs: zoneRule.source_refs || [],
+    source_scope: zoneRule.source_scope || "",
+    zone_mapping_status: zoneRule.zone_mapping_status || "",
+    technical_action: zoneRule.technical_action || "",
+    caveat: zoneRule.caveat || ""
+  };
+}
+
+function materialZoneRequirementsLookup(data){
+  const rows = data?.[MATERIAL_ZONE_REQUIREMENTS_KEY]?.rows || [];
+  const lookup = {};
+  for(const row of rows){
+    if(row.material_key && row.profile_key && row.zone_key){
+      lookup[row.material_key + "::" + row.profile_key + "::" + row.zone_key] = row;
+    }
+  }
+  return lookup;
+}
+
+function primarySourceLockLookup(data){
+  const locks = data?.[PRIMARY_SOURCE_LOCK_MATRIX_KEY]?.source_locks || [];
+  const lookup = {};
+  for(const lock of locks){
+    if(lock.profile_key) lookup[lock.profile_key] = lock;
+  }
+  return lookup;
+}
+
+function applyCodableRequirement(normalized, matrixRow){
+  if(!matrixRow){
+    return {
+      ...normalized,
+      material_zone_join_status: "missing_material_profile_zone_matrix_row"
+    };
+  }
+  return {
+    ...normalized,
+    material_zone_join_status: "exact_material_profile_zone",
+    required_min_mm: Object.prototype.hasOwnProperty.call(matrixRow, "required_min_mm") ? matrixRow.required_min_mm : normalized.required_min_mm,
+    required_ideal_mm: Object.prototype.hasOwnProperty.call(matrixRow, "required_ideal_mm") ? matrixRow.required_ideal_mm : normalized.required_ideal_mm,
+    upper_limit_mm: Object.prototype.hasOwnProperty.call(matrixRow, "upper_limit_mm") ? matrixRow.upper_limit_mm : normalized.upper_limit_mm,
+    evidence_status: matrixRow.evidence_status || normalized.evidence_status,
+    source_refs: matrixRow.source_refs || normalized.source_refs,
+    source_scope: matrixRow.source_scope_for_viewer || normalized.source_scope,
+    zone_mapping_status: matrixRow.zone_mapping_status || normalized.zone_mapping_status,
+    required_display: matrixRow.required_display_es || matrixRow.required_display || normalized.required_display,
+    source_scope_for_viewer: matrixRow.source_scope_for_viewer || normalized.source_scope_for_viewer,
+    row_viewer_color_permission: matrixRow.viewer_color_permission || normalized.row_viewer_color_permission,
+    row_action_rule: matrixRow.action_rule_es || matrixRow.row_action_rule || normalized.row_action_rule,
+    truth_partition: matrixRow.truth_partition || normalized.truth_partition,
+    caveat: matrixRow.caveat_es || normalized.caveat
+  };
+}
+
+function profilesFromRules(data){
+  const profiles = structuredClone(FALLBACK_MATERIAL_PROFILES);
+  const readinessEntries = profileReadinessEntries(data);
+  const requirementRows = materialZoneRequirementsLookup(data);
+  const sourceLocks = primarySourceLockLookup(data);
+  for(const material of data.materials || []){
+    let defaultProfileKey = null;
+    const materialProfileKeys = [];
+    for(const profile of material.profiles || []){
+      const zones = {};
+      let allZonesRule = null;
+      for(const zoneRule of profile.zones || []){
+        const normalized = applyCodableRequirement(
+          normalizeZoneRule(zoneRule),
+          requirementRows[material.material_key + "::" + profile.profile_key + "::" + (zoneRule.zone_key || "all_zones")]
+        );
+        if(zoneRule.legacy_zone_map && ["Cervical", "Medio", "Incisal"].includes(zoneRule.legacy_zone_map) && !zones[zoneRule.legacy_zone_map]){
+          zones[zoneRule.legacy_zone_map] = normalized;
+        }else if(zoneRule.zone_key === "all_zones"){
+          allZonesRule = normalized;
+        }
+      }
+      if(allZonesRule){
+        for(const zone of ["Cervical", "Medio", "Incisal"]){
+          if(!zones[zone]) zones[zone] = {...allZonesRule};
+        }
+      }
+      const normalizedProfile = {
+        profile_key: profile.profile_key,
+        material_key: material.material_key,
+        display_name: material.display_name || material.material_key,
+        restoration_type: profile.restoration_type || "",
+        overall_status: material.overall_status || "",
+        caveat: material.caveat || "",
+        viewer_readiness_label: readinessEntries[profile.profile_key]?.viewer_readiness_label || "",
+        viewer_color_permission: readinessEntries[profile.profile_key]?.viewer_color_permission || "",
+        viewer_readiness_caveat: readinessEntries[profile.profile_key]?.viewer_readiness_caveat || "",
+        selector_label: readinessEntries[profile.profile_key]?.selector_label || "",
+        selector_badge: readinessEntries[profile.profile_key]?.selector_badge || "",
+        selector_badge_status: readinessEntries[profile.profile_key]?.selector_badge_status || "",
+        zones,
+        rules_source: MATERIAL_RULES_URL
+      };
+      const sourceLock = sourceLocks[profile.profile_key];
+      if(sourceLock){
+        normalizedProfile.viewer_color_permission = sourceLock.color_permission || normalizedProfile.viewer_color_permission;
+        normalizedProfile.viewer_readiness_caveat = sourceLock.caveat_es || normalizedProfile.viewer_readiness_caveat;
+        for(const zoneRule of Object.values(zones)){
+          zoneRule.row_viewer_color_permission = sourceLock.color_permission || zoneRule.row_viewer_color_permission;
+          zoneRule.row_action_rule = sourceLock.technical_action_template_es || zoneRule.row_action_rule;
+          zoneRule.caveat = sourceLock.caveat_es || zoneRule.caveat;
+        }
+      }
+      profiles[profile.profile_key] = normalizedProfile;
+      materialProfileKeys.push(profile.profile_key);
+      if(profile.default_for_viewer) defaultProfileKey = profile.profile_key;
+    }
+    if(defaultProfileKey) profiles[material.material_key] = profiles[defaultProfileKey];
+    else if(materialProfileKeys.length === 1) profiles[material.material_key] = profiles[materialProfileKeys[0]];
+  }
+  return profiles;
+}
+
+function profileReadinessEntries(data){
+  const selectorContract = data.viewer_selector_display_contract_2026_07_22 || {};
+  const selectorEntries = selectorContract.options || [];
+  if(selectorEntries.length){
+    const entries = {};
+    for(const entry of selectorEntries){
+      if(!entry.profile_key) continue;
+      entries[entry.profile_key] = {
+        viewer_readiness_label: entry.selector_badge || "",
+        viewer_color_permission: entry.viewer_color_permission || "",
+        viewer_readiness_caveat: entry.blocking_or_caveat_summary || "",
+        selector_label: entry.selector_label || "",
+        selector_badge: entry.selector_badge || "",
+        selector_badge_status: entry.selector_badge_status || ""
+      };
+    }
+    return entries;
+  }
+  const matrix = data.viewer_material_readiness_matrix_2026_07_21 || {};
+  const entries = {};
+  const groups = [
+    ["verified_data", "activo con fuente"],
+    ["secondary_unconfirmed_data", "candidato secundario"],
+    ["pending_source_data", "bloqueado por IFU"]
+  ];
+  for(const [groupKey, label] of groups){
+    for(const entry of matrix[groupKey] || []){
+      if(!entry.profile_key) continue;
+      let readinessLabel = label;
+      if(entry.viewer_color_permission === "red_yellow_green_allowed_with_legacy_source_caveat"){
+        readinessLabel = "activo con caveat legacy";
+      }
+      entries[entry.profile_key] = {
+        viewer_readiness_label: readinessLabel,
+        viewer_color_permission: entry.viewer_color_permission || "",
+        viewer_readiness_caveat: entry.required_visible_caveat || entry.blocking_reason || ""
+      };
+    }
+  }
+  return entries;
+}
+
+async function loadMaterialRules(){
+  try{
+    const res = await fetch(MATERIAL_RULES_URL);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    materialRulesData = await res.json();
+    rowDecisionResolver = materialRulesData[ROW_DECISION_RESOLVER_KEY] || null;
+    materialZoneReadoutContract = materialRulesData[MATERIAL_ZONE_READOUT_CONTRACT_KEY] || null;
+    materialRagActionContract = materialRulesData[MATERIAL_RAG_ACTION_CONTRACT_KEY] || null;
+    materialZoneRequirementsContract = materialRulesData[MATERIAL_ZONE_REQUIREMENTS_KEY] || null;
+    materialSourceHandoffContract = materialRulesData[MATERIAL_SOURCE_HANDOFF_KEY] || null;
+    materialDecisionGateContract = materialRulesData[MATERIAL_DECISION_GATE_KEY] || null;
+    visibleRowOutputContract = materialRulesData[VISIBLE_ROW_OUTPUT_CONTRACT_KEY] || null;
+    technicalActionThresholdsContract = materialRulesData[TECHNICAL_ACTION_THRESHOLDS_KEY] || null;
+    rowResolutionFixtureContract = materialRulesData[ROW_RESOLUTION_FIXTURE_KEY] || null;
+    primarySourceLockMatrixContract = materialRulesData[PRIMARY_SOURCE_LOCK_MATRIX_KEY] || null;
+    materialZoneRowSchemaContract = materialRulesData[MATERIAL_ZONE_ROW_SCHEMA_CONTRACT_KEY] || null;
+    materialProfiles = profilesFromRules(materialRulesData);
+    populateMaterialSelect("Reglas activas: material_rules_2026-08-16.json");
+  }catch(err){
+    populateMaterialSelect("Reglas embebidas de respaldo. Si abres el HTML por file://, el navegador puede bloquear la lectura del JSON externo.");
+  }
+}
+
+function profileLabel(key, profile){
+  if(profile.selector_label){
+    const readiness = profile.viewer_readiness_label ? " (" + profile.viewer_readiness_label + ")" : "";
+    return profile.selector_label + readiness;
+  }
+  const suffix = profile.restoration_type ? " - " + profile.restoration_type.replaceAll("_", " ") : "";
+  const zoneEvidence = Object.values(profile.zones || {}).map(rule => rule.evidence_status);
+  const hasSecondary = zoneEvidence.includes("secondary_unconfirmed");
+  const hasPending = zoneEvidence.includes("pending_source") || profile.overall_status.includes("pending_source");
+  const fallbackEvidence = hasSecondary ? "candidato secundario" : hasPending ? "pendiente fuente" : "";
+  const readiness = profile.viewer_readiness_label || fallbackEvidence;
+  const evidence = readiness ? " (" + readiness + ")" : "";
+  return profile.display_name + suffix + evidence;
+}
+
+function populateMaterialSelect(note){
+  materialSelect.innerHTML = "";
+  for(const key of MATERIAL_ORDER){
+    const profile = materialProfiles[key];
+    if(!profile) continue;
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = profileLabel(key, profile);
+    materialSelect.appendChild(option);
+  }
+  if([...materialSelect.options].some(option => option.value === "demo_veneer")){
+    materialSelect.value = "demo_veneer";
+  }
+  updateMaterialInfo(note);
+}
+
+function activeProfile(){
+  return materialProfiles[materialSelect.value] || materialProfiles.demo_veneer;
+}
+
+function escapeHtml(value){
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function badgeClass(status){
+  const normalized = String(status || "")
+    .toLowerCase()
+    .replaceAll("_", "-")
+    .replace(/[^a-z0-9-]/g, "");
+  return normalized ? " material-badge-" + normalized : "";
+}
+
+function updateMaterialInfo(note = ""){
+  const profile = activeProfile();
+  const status = profile.overall_status ? "Estado: " + profile.overall_status.replaceAll("_", " ") + ". " : "";
+  const zoneEvidence = Object.values(profile.zones || {}).map(rule => rule.evidence_status);
+  const hasSecondary = zoneEvidence.includes("secondary_unconfirmed");
+  const hasPending = zoneEvidence.includes("pending_source");
+  const readiness = profile.viewer_readiness_label ? "\nReadiness: " + profile.viewer_readiness_label + "." : "";
+  const readinessCaveat = profile.viewer_readiness_caveat ? "\n" + profile.viewer_readiness_caveat : "";
+  const materialLine = materialDecisionLine(profile);
+  const guardrail = hasSecondary
+    ? "\nSemaforo: gris/candidato. No aceptar ni rechazar tallado hasta IFU primaria."
+    : hasPending
+      ? "\nSemaforo: gris. Falta fuente IFU/ficha tecnica para decision."
+      : "";
+  const body = status + (profile.caveat || "Sin caveat cargado.") + readiness + readinessCaveat + materialLine + guardrail + (note ? "\n" + note : "");
+  const badge = profile.selector_badge || profile.viewer_readiness_label || "sin contrato";
+  const badgeStatus = profile.selector_badge_status || "";
+  materialInfo.innerHTML = `
+    <div class="material-summary">
+      <div class="material-summary-head">
+        <span class="material-summary-title">${escapeHtml(profile.selector_label || profile.display_name || "Material")}</span>
+        <span class="material-badge${badgeClass(badgeStatus)}">${escapeHtml(badge)}</span>
+      </div>
+      <div class="material-summary-copy">${escapeHtml(body)}</div>
+    </div>
+  `;
+  rangePills.innerHTML = ["Cervical", "Medio", "Incisal"].map(zone => {
+    const rule = profile.zones[zone] || {};
+    const req = rule.required_min_mm == null ? "sin fuente" : minMaxLabel(rule);
+    const evidence = rule.evidence_status ? " · " + rule.evidence_status.replaceAll("_", " ") : "";
+    return '<span class="pill">' + zone + ' ' + req + evidence + '</span>';
+  }).join("");
+  renderAnalysisState(lastAnalysis?.analysis || lastAnalysis, lastAnalysis?.table || lastRows);
+  if(lastDistances) analyzeDistances();
+}
+
+function materialDecisionLine(profile){
+  if(profile.material_key === "ips_empress_cad" && profile.profile_key === "ips_empress_cad_pending_current_ifu_thickness"){
+    return "\nEmpress CAD: fuente primaria encontrada; espesor numerico pendiente de IFU.";
+  }
+  if(profile.material_key === "amt_pending"){
+    return "\nAMT: producto/fabricante no identificado; no hay regla de tallado.";
+  }
+  return "";
+}
+
+materialSelect.addEventListener("change", () => updateMaterialInfo());
+loadMaterialRules();
+loadLocalRankingPanel();
+
+function resize(){
+  const rect = stage.getBoundingClientRect();
+  camera.aspect = rect.width / Math.max(rect.height, 1);
+  camera.updateProjectionMatrix();
+  renderer.setSize(rect.width, rect.height, false);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function animate(){
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+function setStatus(text){ statusBox.textContent = text; }
+
+function clearMesh(obj){
+  if(!obj) return;
+  scene.remove(obj);
+  obj.geometry.dispose();
+  obj.material.dispose();
+}
+
+function centerAndFrame(){
+  const box = new THREE.Box3();
+  if(preopMesh) box.expandByObject(preopMesh);
+  if(waxupMesh) box.expandByObject(waxupMesh);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  controls.target.copy(center);
+  const maxDim = Math.max(size.x, size.y, size.z, 1);
+  camera.position.set(center.x, center.y - maxDim * 1.02, center.z + maxDim * .62);
+  camera.near = maxDim / 1000;
+  camera.far = maxDim * 20;
+  camera.updateProjectionMatrix();
+  controls.minDistance = maxDim * .22;
+  controls.maxDistance = maxDim * 3.2;
+  controls.update();
+}
+
+function geometryFromBuffer(buffer){
+  let geom = loader.parse(buffer);
+  geom = mergeVertices(geom, 0.001);
+  geom.computeVertexNormals();
+  geom.computeBoundingBox();
+  return geom;
+}
+
+function downsampleTriangleGeometry(geometry, maxVertices){
+  const pos = geometry.getAttribute("position");
+  if(!pos || pos.count <= maxVertices) return geometry;
+
+  const src = pos.array;
+  const triCount = Math.floor(pos.count / 3);
+  const targetTriCount = Math.floor(maxVertices / 3);
+  const step = Math.max(1, Math.ceil(triCount / targetTriCount));
+  const keptTriCount = Math.ceil(triCount / step);
+  const dst = new Float32Array(keptTriCount * 9);
+
+  let out = 0;
+  for(let tri = 0; tri < triCount; tri += step){
+    const start = tri * 9;
+    for(let j = 0; j < 9; j++) dst[out++] = src[start + j];
+  }
+
+  const trimmed = out === dst.length ? dst : dst.slice(0, out);
+  const reduced = new THREE.BufferGeometry();
+  reduced.setAttribute("position", new THREE.BufferAttribute(trimmed, 3));
+  geometry.dispose();
+  return reduced;
+}
+
+async function loadStlUrl(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("No se pudo cargar " + url);
+  return geometryFromBuffer(await res.arrayBuffer());
+}
+
+function loadFile(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      try{ resolve(geometryFromBuffer(reader.result)); }
+      catch(err){ reject(err); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function makePreop(geometry){
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color:0x8ba6b2,
+      transparent:true,
+      opacity:.18,
+      roughness:.78,
+      metalness:0,
+      emissive:0x081018,
+      emissiveIntensity:.03,
+      side:THREE.DoubleSide,
+      wireframe:true,
+      depthWrite:false
+    })
+  );
+  mesh.renderOrder = 1;
+  return mesh;
+}
+
+function makeWaxup(geometry){
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color:0xd9f3f1,
+      transparent:false,
+      opacity:1,
+      roughness:.46,
+      metalness:0,
+      emissive:0x071215,
+      emissiveIntensity:.08,
+      side:THREE.DoubleSide
+    })
+  );
+  mesh.renderOrder = 2;
+  return mesh;
+}
+
+async function setMeshes(preopGeometry, waxupGeometry){
+  clearMesh(preopMesh);
+  clearMesh(waxupMesh);
+  preopMesh = makePreop(preopGeometry);
+  waxupMesh = makeWaxup(waxupGeometry);
+  preopMesh.visible = false;
+  scene.add(preopMesh);
+  scene.add(waxupMesh);
+  analyzeBtn.disabled = false;
+  lastDistances = null;
+  lastRows = [];
+  lastAnalysis = null;
+  exportCsvBtn.disabled = true;
+  exportJsonBtn.disabled = true;
+  zoneRows.innerHTML = "";
+  centerAndFrame();
+  setStatus("Wax-up visible limpio. Preoperatorio cargado en memoria para enlazar y medir.");
+}
+
+async function setPreopGeometry(geometry, sourceName = "preoperatorio"){
+  clearMesh(preopMesh);
+  preopMesh = makePreop(geometry);
+  preopMesh.visible = !waxupMesh;
+  scene.add(preopMesh);
+  resetAnalysisState();
+  centerAndFrame();
+  updateAnalyzeAvailability();
+  setStatus(waxupMesh
+    ? "Preoperatorio actualizado en memoria. Wax-up visible limpio. Ejecuta Enlazar y medir."
+    : "Preoperatorio visible. Selecciona tambien el encerado.");
+}
+
+async function setWaxupGeometry(geometry, sourceName = "encerado"){
+  clearMesh(waxupMesh);
+  waxupMesh = makeWaxup(geometry);
+  scene.add(waxupMesh);
+  if(preopMesh) preopMesh.visible = false;
+  resetAnalysisState();
+  centerAndFrame();
+  updateAnalyzeAvailability();
+  setStatus(preopMesh
+    ? "Wax-up visible limpio. Preoperatorio cargado en memoria. Ejecuta Enlazar y medir."
+    : "Encerado visible. Selecciona tambien el preoperatorio.");
+}
+
+function resetAnalysisState(){
+  lastDistances = null;
+  lastRows = [];
+  lastAnalysis = null;
+  exportCsvBtn.disabled = true;
+  exportJsonBtn.disabled = true;
+  zoneRows.innerHTML = "";
+  engineBadge.textContent = "Motor pendiente de ejecutar.";
+  document.getElementById("p50").textContent = "-";
+  document.getElementById("p95").textContent = "-";
+  document.getElementById("lowPct").textContent = "-";
+  document.getElementById("meshCount").textContent = "-";
+}
+
+loadDemoBtn.addEventListener("click", async () => {
+  try{
+    setStatus("Cargando demo local...");
+    const [pre, wax] = await Promise.all([loadStlUrl(DEMO_PREOP), loadStlUrl(DEMO_WAXUP)]);
+    await setMeshes(pre, wax);
+    demoLoaded = true;
+    preopFileName.textContent = "Demo Ascent: preoperatorio_sup.stl";
+    waxupFileName.textContent = "Demo Ascent: encerado_sup.stl";
+  }catch(err){
+    setStatus("Error demo: " + err.message);
+  }
+});
+
+preopFile.addEventListener("change", handlePreopSelection);
+waxupFile.addEventListener("change", handleWaxupSelection);
+landmarksFile.addEventListener("change", handleLandmarksSelection);
+
+async function handlePreopSelection(){
+  const file = preopFile.files?.[0];
+  if(!file) return;
+  try{
+    preopFileName.textContent = file.name;
+    setStatus("Cargando preoperatorio en visor...");
+    await setPreopGeometry(await loadFile(file), file.name);
+    demoLoaded = false;
+  }catch(err){
+    console.error(err);
+    setStatus("Error cargando preoperatorio: " + err.message);
+  }
+}
+
+async function handleWaxupSelection(){
+  const file = waxupFile.files?.[0];
+  if(!file) return;
+  try{
+    waxupFileName.textContent = file.name;
+    setStatus("Cargando encerado en visor...");
+    await setWaxupGeometry(await loadFile(file), file.name);
+    demoLoaded = false;
+  }catch(err){
+    console.error(err);
+    setStatus("Error cargando encerado: " + err.message);
+  }
+}
+
+function handleLandmarksSelection(){
+  const file = landmarksFile.files?.[0];
+  landmarksFileName.textContent = file ? file.name : "Solo para QA tecnico revisable";
+  resetAnalysisState();
+  if(file){
+    setStatus("Landmarks cargados para el motor Python. Se usaran solo como QA tecnico; la puerta QA decide si siguen bloqueados para clinica.");
+  }
+}
+
+function updateAnalyzeAvailability(){
+  analyzeBtn.disabled = !(preopMesh && waxupMesh);
+}
+
+analyzeBtn.addEventListener("click", async () => {
+  try{
+    if(!preopMesh || !waxupMesh) return;
+    setStatus("Calculando heatmap interactivo y metricas...");
+    await new Promise(requestAnimationFrame);
+    analyzeDistances();
+    if(metricMode.value === "engine"){
+      await runEngineAnalysis();
+    }
+  }catch(err){
+    console.error(err);
+    setStatus("Error: " + err.message);
+  }
+});
+
+async function runEngineAnalysis(){
+  const form = new FormData();
+  const requestedMethod = exactSurface.checked ? "exact_surface" : measurementMethod.value;
+  form.append("material", materialSelect.value);
+  form.append("arch", archSelect.value);
+  form.append("input_unit", inputUnit.value);
+  form.append("measurement_method", requestedMethod);
+  form.append("ray_direction", rayDirection.value);
+  form.append("exact_surface", requestedMethod === "exact_surface" ? "1" : "0");
+  const landmarks = landmarksFile.files?.[0];
+  if(landmarks){
+    form.append("landmarks", landmarks, landmarks.name);
+  }
+  if(demoLoaded && (!preopFile.files?.[0] || !waxupFile.files?.[0])){
+    form.append("mode", "demo");
+  }else{
+    const preop = preopFile.files?.[0];
+    const waxup = waxupFile.files?.[0];
+    if(!preop || !waxup){
+      engineBadge.textContent = "Motor Python no ejecutado: para archivos propios necesito ambos STL seleccionados.";
+      return;
+    }
+    form.append("mode", "upload");
+    form.append("preop", preop, preop.name);
+    form.append("waxup", waxup, waxup.name);
+  }
+
+  engineBadge.textContent = "Motor Python ejecutando prep_engine.py...";
+  const res = await fetch("./api/analyze", {method:"POST", body:form});
+  const payload = await res.json();
+  if(!payload.ok){
+    throw new Error(payload.error || "Fallo en /api/analyze");
+  }
+  applyEngineResults(payload.analysis, payload.table || []);
+}
+
+function applyEngineResults(analysis, rows){
+  lastAnalysis = {
+    app: "BigColor PREP 2",
+    version: "motor Python",
+    generatedAt: new Date().toISOString(),
+    analysis,
+    table: rows
+  };
+  lastRows = rows;
+  const summary = analysis.distance_summary_mm || {};
+  document.getElementById("p50").textContent = formatMm(summary.p50);
+  document.getElementById("p95").textContent = formatMm(summary.p95);
+  const criticalRows = rows.filter(row => (row["Decision PREP"] || "").includes("TALLAR") || row["Decision PREP"] === "REVISAR").length;
+  document.getElementById("lowPct").textContent = rows.length ? Math.round((criticalRows / rows.length) * 100) + "%" : "-";
+  document.getElementById("meshCount").textContent = String(rows.reduce((total, row) => total + Number(row.Vertices || 0), 0) || "-");
+  const reg = analysis.registration || {};
+  const distance = analysis.distance || {};
+  const unit = analysis.units || {};
+  const qaGate = analysis.qa_gate || {};
+  engineBadge.textContent =
+    "Motor Python: " + (distance.method || "-") +
+    " | distancia: " + (distance.confidence || "-") +
+    " | registro: " + (reg.method || "-") +
+    " | confianza: " + (reg.confidence || "-") +
+    " | Unidad STL: " + unitSummaryLabel(unit);
+  renderQaGate(qaGate, distance);
+  renderAnalysisState(analysis, rows);
+  zoneRows.innerHTML = rows.map(row => {
+    const rowDecision = resolveViewerRowDecision(row);
+    const legacyDeficit = row["Deficit vs objetivo (mm)"];
+    const decision = rowDecision.decision_label_es || row["Decision PREP"] || prepDecisionLabel(row["Evaluacion material"] || row.Evaluacion);
+    const actionText = engineRowAction(row);
+    const trace = [
+      readableRuleMeta(row["Estado evidencia"]),
+      rowDecision.decision_gate ? "Compuerta: " + readableRuleMeta(rowDecision.decision_gate) : "",
+      rowDecision.action_band_key ? "Banda: " + readableRuleMeta(rowDecision.action_band_key) : "",
+      rowDecision.color_key ? "Color: " + readableRuleMeta(rowDecision.color_key) : "",
+      rowDecision.material_zone_join_status ? "Join: " + readableRuleMeta(rowDecision.material_zone_join_status) : "",
+      "Alcance: " + readableRuleMeta(row["Source scope"]),
+      "Mapeo: " + readableRuleMeta(row["Zone mapping status"]),
+      row["Distance confidence"] ? "Distancia: " + readableRuleMeta(row["Distance confidence"]) : "",
+      row["QA gate status"] ? "QA: " + readableRuleMeta(row["QA gate status"]) : "",
+      row["Action key"] ? "Accion: " + readableRuleMeta(row["Action key"]) : "",
+      rowComparisonAllowed(rowDecision.decision_gate, rowDecision.material_zone_join_status) ? "Deficit motor: " + formatDeficit(legacyDeficit) : "",
+      actionText ? "Accion tecnica: " + actionText : ""
+    ].filter(Boolean).join(" | ");
+    const caveat = [actionText, row.Caveat].filter(Boolean).join(" | ");
+    return '<tr><td>'+escapeHtml(row.Diente)+'</td><td>'+escapeHtml(row.Zona)+'</td><td>'+escapeHtml(Number(row["P50 firmado (mm)"]).toFixed(2))+'</td><td>'+escapeHtml(compactDeficitDisplay(rowDecision))+'</td><td>'+escapeHtml(decision)+'</td><td class="rule-meta" title="'+escapeHtml(caveat)+'">'+escapeHtml(trace)+'</td></tr>';
+  }).join("");
+  exportCsvBtn.disabled = false;
+  exportJsonBtn.disabled = false;
+  setStatus(
+    "Metricas del motor Python aplicadas. El mapa de color representa espesor continuo; la decision PREP esta en la tabla. " +
+    "Puerta QA: " + readableRuleMeta(qaGate.status || "sin_qa_gate") + ". " +
+    "Confianza de registro: " + (reg.confidence || "-") + ". " +
+    "Unidad STL: " + unitSummaryLabel(unit) + ". " +
+    ((reg.confidence || "") === "baja" ? "No confirmo exactitud clinica hasta usar landmarks/registro validado." : "Registro util para QA tecnico; revisar repetibilidad antes de uso clinico.")
+  );
+}
+
+function renderQaGate(qaGate, distance = {}){
+  const box = document.getElementById("qaGateBox");
+  const status = qaGate?.status || "sin_qa_gate";
+  const blockers = qaGate?.blockers || [];
+  const warnings = qaGate?.warnings || [];
+  const clinical = qaGate?.can_use_for_clinical_decision === true;
+  const demo = qaGate?.can_use_for_demo_or_qa !== false;
+  const rayHitRatio = distance?.ray_hit_ratio;
+  const fallbackRatio = distance?.fallback_ratio;
+  const rayCounters = Number.isFinite(Number(distance?.ray_hit_count)) && Number.isFinite(Number(distance?.fallback_count))
+    ? "Rayos: " + distance.ray_hit_count + "/" + (Number(distance.ray_hit_count) + Number(distance.fallback_count)) + " hits"
+    : "";
+  const sampleCounters = Number.isFinite(Number(distance?.sample_count_used)) || Number.isFinite(Number(distance?.sample_count_requested))
+    ? "Muestras: " + (distance?.sample_count_used ?? "-") + "/" + (distance?.sample_count_requested ?? "-")
+    : "";
+  const rayDepth = Number.isFinite(Number(distance?.ray_max_depth_mm))
+    ? "Profundidad rayo: " + Number(distance.ray_max_depth_mm).toFixed(1) + " mm"
+    : "";
+  const rayDirectionLabel = distance?.ray_direction ? "Direccion rayo: " + distance.ray_direction : "";
+  const rayRatios = Number.isFinite(Number(rayHitRatio)) || Number.isFinite(Number(fallbackRatio))
+    ? "Cobertura: " + formatPct(rayHitRatio) + " hit, " + formatPct(fallbackRatio) + " fallback"
+    : "";
+  const parts = [
+    "Puerta QA: " + readableRuleMeta(status),
+    "Uso clinico: " + (clinical ? "permitido" : "bloqueado"),
+    "Demo/QA: " + (demo ? "permitido" : "bloqueado"),
+    "Distancia: " + (distance?.confidence || "-"),
+    rayCounters,
+    sampleCounters,
+    rayDepth,
+    rayDirectionLabel,
+    rayRatios,
+    blockers.length ? "Blockers: " + blockers.map(readableRuleMeta).join(", ") : "",
+    warnings.length ? "Warnings: " + warnings.map(readableRuleMeta).join(", ") : ""
+  ].filter(Boolean);
+  box.textContent = parts.join(" | ");
+  box.classList.toggle("qa-gate-blocked", !clinical);
+  box.classList.toggle("qa-gate-pass", clinical);
+}
+
+function renderAnalysisState(analysis = null, rows = []){
+  const profile = activeProfile();
+  const qaGate = analysis?.qa_gate || {};
+  const reg = analysis?.registration || {};
+  const distance = analysis?.distance || {};
+  const units = analysis?.units || {};
+  const clinical = qaGate?.can_use_for_clinical_decision === true;
+  const blockers = Array.isArray(qaGate?.blockers) ? qaGate.blockers : [];
+  const rowCount = Array.isArray(rows) ? rows.length : 0;
+  const materialLabel = profile.selector_label || profile.display_name || profile.material_key || materialSelect.value;
+  const profileLabel = profile.profile_key || materialSelect.value;
+  const qaStatus = qaGate?.status || (analysis ? "sin_qa_gate" : "pendiente_motor_python");
+  const distanceMethod = distance?.method || analysis?.distanceMethod || "-";
+  const unitLabel = unitSummaryLabel(units);
+  const blockerText = blockers.length ? blockers.map(readableRuleMeta).join(", ") : "sin blockers cargados";
+  analysisStateBox.innerHTML = `
+    <div><strong>Estado de analisis</strong></div>
+    <div class="analysis-state-grid">
+      <span><strong>Material</strong>${escapeHtml(materialLabel)}</span>
+      <span><strong>Perfil</strong>${escapeHtml(profileLabel)}</span>
+      <span><strong>QA gate</strong>${escapeHtml(readableRuleMeta(qaStatus))}</span>
+      <span><strong>Uso clinico</strong>${escapeHtml(clinical ? "permitido" : "bloqueado")}</span>
+      <span><strong>Registro</strong>${escapeHtml((reg.method || "-") + " / " + (reg.confidence || "-"))}</span>
+      <span><strong>Distancia</strong>${escapeHtml(distanceMethod + " / " + (distance.confidence || "-"))}</span>
+      <span><strong>Unidad STL</strong>${escapeHtml(unitLabel)}</span>
+      <span><strong>Filas</strong>${escapeHtml(rowCount ? String(rowCount) : "-")}</span>
+    </div>
+    <div class="analysis-state-note">${escapeHtml(clinical ? "QA tecnico liberado por el motor; revisar validacion y repetibilidad antes de uso clinico real." : "Bloqueo prudente: no usar como medicion clinica validada. Motivo: " + blockerText + ".")}</div>
+  `;
+  analysisStateBox.classList.toggle("qa-gate-blocked", !clinical);
+  analysisStateBox.classList.toggle("qa-gate-pass", clinical);
+}
+
+function formatMm(value){
+  const n = finiteNumberOrNull(value);
+  return n == null ? "-" : n.toFixed(2) + " mm";
+}
+
+function formatRequiredDisplay(value, fallback){
+  if(fallback && fallback !== "nan") return fallback;
+  const n = finiteNumberOrNull(value);
+  return n == null ? "pendiente de IFU/ficha tecnica" : n.toFixed(2) + " mm";
+}
+
+function finiteNumberOrNull(value){
+  if(value === null || value === undefined || value === "" || value === "nan") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatPct(value){
+  return Number.isFinite(Number(value)) ? Math.round(Number(value) * 100) + "%" : "-";
+}
+
+function formatLocalMetric(value, digits = 2){
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : "-";
+}
+
+function firstCount(counts, key){
+  return Number(counts?.[key] || 0);
+}
+
+async function loadLocalRankingPanel(){
+  try{
+    const res = await fetch(LOCAL_RANKING_URL);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    renderLocalRankingPanel(await res.json());
+  }catch(err){
+    localRankingBox.innerHTML =
+      "Panel visible requiere servidor local Python. Artefacto disponible: " +
+      '<a href="./outputs/pedro-local-ranking-qa-panel-2026-08-07.md" style="color:#fff0b8">Markdown QA</a>.';
+  }
+}
+
+function renderLocalRankingPanel(payload){
+  if(!payload?.available){
+    localRankingBox.textContent = payload?.decision || "Ranking local no disponible.";
+    return;
+  }
+  const reasons = Object.entries(payload.mainRejectionReasons || {}).slice(0, 4);
+  const patches = (payload.topPatches || []).slice(0, 5);
+  const best = payload.bestPatch || patches[0] || {};
+  localRankingBox.innerHTML = `
+    <div class="qa-ranking-kpis">
+      <span><strong>${escapeHtml(payload.rowsEvaluated)}</strong>patches</span>
+      <span><strong>${escapeHtml(firstCount(payload.candidateStatusCounts, "reject"))}</strong>rechazos</span>
+      <span><strong>${escapeHtml(firstCount(payload.safeToApplyCounts, "yes"))}</strong>aplicables</span>
+    </div>
+    <div>
+      <strong>Mejor patch numerico:</strong>
+      diente ${escapeHtml(best.Diente || "-")} ${escapeHtml(best["Zona local"] || "-")},
+      P95 ${escapeHtml(formatLocalMetric(best.local_icp_p95_mm, 3))} mm,
+      rot ${escapeHtml(formatLocalMetric(best.local_icp_rotation_deg, 1))}°,
+      tras ${escapeHtml(formatLocalMetric(best.local_icp_translation_mm, 2))} mm.
+    </div>
+    <ol class="qa-ranking-list">
+      ${reasons.map(([reason, count]) => `<li>${escapeHtml(readableRuleMeta(reason))}: ${escapeHtml(count)}</li>`).join("")}
+    </ol>
+    <table class="qa-ranking-table">
+      <thead><tr><th>Diente</th><th>Zona</th><th>Radio</th><th>P95</th><th>Seguro</th></tr></thead>
+      <tbody>
+        ${patches.map(row => `
+          <tr>
+            <td>${escapeHtml(row.Diente || "-")}</td>
+            <td>${escapeHtml(row["Zona local"] || "-")}</td>
+            <td>${escapeHtml(formatLocalMetric(row.neighborhood_radius_mm, 0))}</td>
+            <td>${escapeHtml(formatLocalMetric(row.local_icp_p95_mm, 2))}</td>
+            <td>${escapeHtml(row.safe_to_apply_local_transform || "no")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+    <div>${escapeHtml(payload.decision || "")} ${escapeHtml(payload.clinicalCaveat || "")}</div>
+  `;
+}
+
+function unitSummaryLabel(unit){
+  const input = unit?.input_unit || "-";
+  const scale = unit?.scale_to_mm == null ? "-" : String(unit.scale_to_mm);
+  const confidence = unit?.confidence || "-";
+  return input + " -> mm x" + scale + " (" + confidence + ")";
+}
+
+function positionsArray(geometry){
+  return geometry.getAttribute("position").array;
+}
+
+function buildGrid(pos, cellSize){
+  const grid = new Map();
+  for(let i=0; i<pos.length; i+=3){
+    const key = cellKey(pos[i], pos[i+1], pos[i+2], cellSize);
+    let bucket = grid.get(key);
+    if(!bucket){ bucket = []; grid.set(key, bucket); }
+    bucket.push(i);
+  }
+  return grid;
+}
+
+function cellKey(x,y,z,s){
+  return Math.floor(x/s) + "," + Math.floor(y/s) + "," + Math.floor(z/s);
+}
+
+function nearestDistance(x,y,z, prePos, grid, cellSize){
+  const cx = Math.floor(x/cellSize);
+  const cy = Math.floor(y/cellSize);
+  const cz = Math.floor(z/cellSize);
+  let best = Infinity;
+  let found = false;
+  for(let radius=0; radius<=4; radius++){
+    for(let ix=cx-radius; ix<=cx+radius; ix++){
+      for(let iy=cy-radius; iy<=cy+radius; iy++){
+        for(let iz=cz-radius; iz<=cz+radius; iz++){
+          const bucket = grid.get(ix + "," + iy + "," + iz);
+          if(!bucket) continue;
+          found = true;
+          for(const j of bucket){
+            const dx=x-prePos[j], dy=y-prePos[j+1], dz=z-prePos[j+2];
+            const d2 = dx*dx + dy*dy + dz*dz;
+            if(d2 < best) best = d2;
+          }
+        }
+      }
+    }
+    if(found) break;
+  }
+  if(!found){
+    for(let j=0; j<prePos.length; j+=3){
+      const dx=x-prePos[j], dy=y-prePos[j+1], dz=z-prePos[j+2];
+      const d2 = dx*dx + dy*dy + dz*dz;
+      if(d2 < best) best = d2;
+    }
+  }
+  return Math.sqrt(best);
+}
+
+function colorFor(distance, zone){
+  const rule = zoneRule(zone);
+  if(rule.evidence_status === "pending_source" || rule.evidence_status === "secondary_unconfirmed" || rule.required_min_mm == null){
+    return [.48, .56, .58];
+  }
+  return heatmapColorForThickness(distance);
+}
+
+function heatmapColorForThickness(distance){
+  const clipped = Math.max(0, Math.min(2, Number(distance) || 0));
+  return turboColor(1 - clipped / 2);
+}
+
+function turboColor(t){
+  const x = clamp01(t);
+  const stops = [
+    [0.000, [0x30, 0x12, 0x3b]],
+    [0.071, [0x41, 0x45, 0xab]],
+    [0.143, [0x46, 0x75, 0xed]],
+    [0.214, [0x39, 0xa2, 0xfc]],
+    [0.286, [0x1b, 0xcf, 0xd4]],
+    [0.357, [0x24, 0xec, 0xa6]],
+    [0.429, [0x61, 0xfc, 0x6c]],
+    [0.500, [0xa4, 0xfc, 0x3b]],
+    [0.571, [0xd1, 0xe8, 0x34]],
+    [0.643, [0xf3, 0xc6, 0x3a]],
+    [0.714, [0xfe, 0x9b, 0x2d]],
+    [0.786, [0xf3, 0x63, 0x15]],
+    [0.857, [0xd9, 0x38, 0x06]],
+    [0.929, [0xb1, 0x19, 0x01]],
+    [1.000, [0x7a, 0x04, 0x03]]
+  ];
+  for(let i=1; i<stops.length; i++){
+    if(x <= stops[i][0]){
+      const prev = stops[i - 1];
+      const next = stops[i];
+      const span = Math.max(next[0] - prev[0], .001);
+      return mixColor(prev[1].map(v => v / 255), next[1].map(v => v / 255), (x - prev[0]) / span);
+    }
+  }
+  return stops[stops.length - 1][1].map(v => v / 255);
+}
+
+function clamp01(value){
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function mixColor(a, b, t){
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t
+  ];
+}
+
+function zoneRule(zone){
+  return activeProfile().zones[zone] || {required_min_mm:null, required_ideal_mm:null, upper_limit_mm:null, evidence_status:"pending_source", source_refs:[], caveat:"No hay regla cargada para esta zona/perfil."};
+}
+
+function minMaxLabel(rule){
+  if(rule.required_min_mm == null) return "sin fuente";
+  const min = Number(rule.required_min_mm).toFixed(2);
+  const ideal = rule.required_ideal_mm == null ? null : Number(rule.required_ideal_mm).toFixed(2);
+  const upper = rule.upper_limit_mm == null ? null : Number(rule.upper_limit_mm).toFixed(2);
+  if(ideal && upper) return min + "-" + upper + " mm";
+  if(ideal) return min + "+ / ideal " + ideal + " mm";
+  if(upper) return min + "-" + upper + " mm";
+  return ">= " + min + " mm";
+}
+
+function statusFor(value, zone){
+  const rule = zoneRule(zone);
+  const min = rule.required_min_mm;
+  const ideal = rule.required_ideal_mm;
+  const upper = rule.upper_limit_mm;
+  if(rule.evidence_status === "pending_source" || rule.evidence_status === "secondary_unconfirmed" || min == null) return "low_confidence";
+  if(value < min) return "insufficient_space";
+  if(upper != null && value > upper) return "over_reduced_or_excess_space";
+  if(ideal != null && value < ideal) return "borderline";
+  return "within_target";
+}
+
+function actionKeyFor(status, zone){
+  const rule = zoneRule(zone);
+  if(rule.evidence_status === "pending_source" || rule.required_min_mm == null || status === "low_confidence") return "pedir_ifu_no_colorear";
+  if(rule.evidence_status === "secondary_unconfirmed") return "candidato_secundario_no_activo";
+  if(status === "insufficient_space") return "tallar_mas_o_revisar_indicacion";
+  if(status === "over_reduced_or_excess_space") return "revisar_sobreespacio_o_soporte";
+  if(status === "borderline") return "zona_limite_confirmar_caveat";
+  if(status === "within_target") return "espacio_compatible_con_caveat";
+  return status;
+}
+
+function statusLabel(status){
+  if(status === "insufficient_space") return "Tallar";
+  if(status === "over_reduced_or_excess_space") return "OK";
+  if(status === "borderline") return "Revisar";
+  if(status === "low_confidence") return "Baja confianza";
+  return "OK";
+}
+
+function prepDecisionLabel(status){
+  if(status === "insufficient_space") return "TALLAR";
+  if(status === "borderline") return "REVISAR";
+  if(status === "low_confidence") return "SIN FUENTE";
+  return "OK";
+}
+
+function evidenceDecisionLabel(rule, status){
+  if(rule.evidence_status === "secondary_unconfirmed") return "CANDIDATO";
+  if(rule.evidence_status === "pending_source" || rule.required_min_mm == null) return "SIN FUENTE";
+  return prepDecisionLabel(status);
+}
+
+function traceClassFor(rule){
+  if(rule.evidence_status === "secondary_unconfirmed") return "trace-secondary";
+  if(rule.evidence_status === "pending_source" || rule.required_min_mm == null) return "trace-pending";
+  return "";
+}
+
+function traceCauseFor(rule){
+  if(rule.evidence_status === "secondary_unconfirmed") return "Causa: candidato sin IFU primaria";
+  if(rule.evidence_status === "pending_source" || rule.required_min_mm == null) return "Causa: falta fuente IFU/ficha tecnica";
+  return "Causa: regla trazada";
+}
+
+function formatDeficit(value){
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : "0.00";
+}
+
+function materialZoneJoinStatusFor(row, rule){
+  return row.material_zone_join_status ??
+    row["Material-zone join status"] ??
+    rule?.material_zone_join_status ??
+    "";
+}
+
+function hasExactMaterialZoneJoin(status){
+  return status === "exact_material_profile_zone";
+}
+
+function rowComparisonAllowed(decisionGate, materialZoneJoinStatus){
+  return hasExactMaterialZoneJoin(materialZoneJoinStatus) &&
+    ["verified_or_primary_archived_can_compare", "demo_only", "material_comparison_allowed"].includes(decisionGate);
+}
+
+function compactDeficitDisplay(rowDecision){
+  if(!rowComparisonAllowed(rowDecision.decision_gate, rowDecision.material_zone_join_status)){
+    return rowDecision.deficit_display_es || "no calculable";
+  }
+  return rowDecision.deficit_display_es || formatDeficit(rowDecision.deficit_mm);
+}
+
+function zoneLabelEs(zoneKey, engineZone){
+  const readoutRows = materialZoneReadoutContract?.zone_label_crosswalk || [];
+  for(const row of readoutRows){
+    const aliases = row.viewer_aliases || [];
+    if(row.zone_key === zoneKey || aliases.includes(zoneKey) || aliases.includes(engineZone)){
+      return row.zone_label_es || zoneKey || engineZone;
+    }
+  }
+  const rows = materialRulesData?.viewer_zone_crosswalk_2026_07_25?.crosswalk_rows || [];
+  for(const row of rows){
+    if((row.preferred_zone_keys || []).includes(zoneKey)) return row.display_label_es || zoneKey;
+    if(row.engine_zone === engineZone) return row.display_label_es || engineZone;
+  }
+  if(zoneKey === "facial_cervical") return "cervical/margen";
+  if(zoneKey === "facial_middle") return "medio/axial";
+  if(zoneKey === "incisal_edge") return "incisal/oclusal funcional";
+  return zoneKey || engineZone || "zona";
+}
+
+function templateValue(template, values){
+  return String(template || "").replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => values[key] ?? "");
+}
+
+function sourceTraceForViewerRow({materialKey, evidence, permission, requiredMin, decisionGate, colorKey, deficitDisplayEs, materialZoneJoinStatus}){
+  let status = "Bloqueado: trazabilidad insuficiente";
+  let token = "blocked_trace_not_resolved";
+  if(materialZoneJoinStatus === "missing_material_profile_zone_matrix_row"){
+    status = "Bloqueado: falta regla exacta material/perfil/zona";
+    token = "blocked_missing_material_zone_rule";
+  }else if(materialKey === "amt_pending" || permission === "force_gray_until_product_and_ifu_identified"){
+    status = "Bloqueado: material no identificado";
+    token = "blocked_unidentified_material";
+  }else if(evidence === "secondary_unconfirmed" || permission === "force_gray_candidate_for_internal_qa_only" || permission === "gray_internal_candidate_only"){
+    status = "Candidato secundario: solo QA interna";
+    token = "blocked_secondary_candidate";
+  }else if(String(permission || "").startsWith("force_gray") || evidence === "pending_source" || !Number.isFinite(requiredMin)){
+    status = "Bloqueado: falta IFU/ficha tecnica primaria";
+    token = "blocked_pending_primary_source";
+  }else if(permission === "allow_rag_with_visible_caveat" && Number.isFinite(requiredMin)){
+    status = "Fuente permite RAG con caveat visible";
+    token = "rag_allowed_visible_caveat";
+  }else if(decisionGate === "demo_only"){
+    status = "Demo tecnica: no clinico";
+    token = "demo_only_visible_caveat";
+  }
+  const labels = {
+    allow_rag_with_visible_caveat: "RAG permitido con caveat visible",
+    force_gray_until_source_verified: "gris obligatorio hasta IFU/ficha tecnica primaria",
+    force_gray_candidate_for_internal_qa_only: "gris obligatorio: candidato solo QA interna",
+    force_gray_until_product_and_ifu_identified: "gris obligatorio: material no identificado",
+    allow_demo_colors_only: "color solo demo, no clinico"
+  };
+  return {
+    source_trace_status_es: status,
+    source_trace_token: token,
+    color_permission_display_es: labels[permission] || permission || "sin permiso de color trazable",
+    color_key: token.startsWith("blocked_") ? "gray" : colorKey,
+    deficit_display_es: token.startsWith("blocked_") ? "sin deficit clinico calculable" : deficitDisplayEs
+  };
+}
+
+function decisionStepByLabel(label){
+  return (materialRagActionContract?.decision_order || rowDecisionResolver?.decision_order || []).find(step => step.decision_label_es === label) || {};
+}
+
+function canUseMaterialColor(permission){
+  const key = String(permission || "");
+  return key === "allow_color_with_caveat" || key === "allow_rag_with_visible_caveat" || key.includes("red_yellow_green_allowed");
+}
+
+function ragColorStep(key, fallbackLabel){
+  const color = materialRagActionContract?.rag_colors?.[key] || {};
+  const step = fallbackLabel ? decisionStepByLabel(fallbackLabel) : {};
+  return {
+    color_status: step.color_status || color.status || "low_confidence",
+    color_hex: color.hex || step.color_hex || "#8ba6b2",
+    decision_label_es: color.label_es || step.decision_label_es || fallbackLabel || "gris - regla no encontrada",
+    technical_action_es: color.action_es || step.technical_action_es || "No hay cruce trazable de material/perfil/zona. Mostrar requerido como pendiente y pedir regla versionada."
+  };
+}
+
+function readoutRowForMaterial(materialKey){
+  return (materialZoneReadoutContract?.material_readout_rows || []).find(row => row.material_key === materialKey) || {};
+}
+
+function truthPartitionFor(evidence, permission, profileKey){
+  if(["gray_internal_candidate_only", "force_gray_candidate_for_internal_qa_only"].includes(permission) || evidence === "secondary_unconfirmed"){
+    return "secondary_unconfirmed_candidate";
+  }
+  if(["force_gray_pending_source", "force_gray_until_source_verified", "force_gray_until_product_and_ifu_identified"].includes(permission) || evidence === "pending_source"){
+    return "pending_source";
+  }
+  if(String(profileKey || "").includes("demo") || permission === "allow_demo_colors_only" || evidence === "estimated_legacy_demo" || evidence === "estimated_prep_demo_050"){
+    return "estimated_demo_not_clinical";
+  }
+  return "verified_or_primary_archived";
+}
+
+function colorLabelEs(selected){
+  return selected.decision_label_es || "gris - regla no encontrada";
+}
+
+function deficitDisplay(requiredMin, measured, deficit){
+  if(Number.isFinite(requiredMin) && Number.isFinite(measured) && Number.isFinite(deficit)){
+    return deficit.toFixed(2) + " mm";
+  }
+  return "no calculable";
+}
+
+function actionBandForRow(decisionGate, measured, requiredMin, requiredIdeal, upperLimit, deficit, materialZoneJoinStatus){
+  const comparisonAllowed = rowComparisonAllowed(decisionGate, materialZoneJoinStatus);
+  if(!comparisonAllowed){
+    return {action_band_key: "blocked_before_material_action", legacy_action_band_key: "blocked_before_material_action", deficit_display_es: "no calculable como delta clinico"};
+  }
+  if(Number.isFinite(upperLimit) && measured > upperLimit){
+    return {action_band_key: "above_upper_limit_or_excess_space", legacy_action_band_key: "excess_space", deficit_display_es: (measured - upperLimit).toFixed(2) + " mm exceso"};
+  }
+  if(!Number.isFinite(deficit)){
+    return {action_band_key: "blocked_before_material_action", legacy_action_band_key: "blocked_before_material_action", deficit_display_es: "no calculable"};
+  }
+  if(deficit > 0.20) return {action_band_key: "below_required_minimum_prepare_more_or_replan", legacy_action_band_key: "missing_space_major", deficit_display_es: deficit.toFixed(2) + " mm"};
+  if(deficit > 0.05) return {action_band_key: "below_required_minimum_prepare_more_or_replan", legacy_action_band_key: "missing_space_minor", deficit_display_es: deficit.toFixed(2) + " mm"};
+  if(deficit > 0) return {action_band_key: "borderline_confirm_before_accepting", legacy_action_band_key: "borderline_acceptance_margin", deficit_display_es: deficit.toFixed(2) + " mm"};
+  if(Number.isFinite(requiredIdeal) && measured < requiredIdeal){
+    return {action_band_key: "borderline_confirm_before_accepting", legacy_action_band_key: "borderline_acceptance_margin", deficit_display_es: "0.00 mm"};
+  }
+  return {action_band_key: "compatible_with_selected_rule", legacy_action_band_key: "meets_requirement", deficit_display_es: "0.00 mm"};
+}
+
+function canonicalActionBandKey(actionBandKey, decisionGate, sourceTraceToken, materialZoneJoinStatus){
+  if(actionBandKey === "blocked_before_material_action"){
+    if(materialZoneJoinStatus === "missing_material_profile_zone_matrix_row" || sourceTraceToken === "blocked_missing_material_zone_rule"){
+      return "missing_material_zone_rule";
+    }
+    if(["secondary_candidate", "source_pending_or_unidentified"].includes(decisionGate) || ["blocked_secondary_candidate", "blocked_pending_primary_source", "blocked_unidentified_material"].includes(sourceTraceToken)){
+      return "source_pending_or_secondary_no_rag";
+    }
+    return "qa_blocked_no_clinical_delta";
+  }
+  return {
+    missing_space_major: "below_required_minimum_prepare_more_or_replan",
+    missing_space_minor: "below_required_minimum_prepare_more_or_replan",
+    borderline_acceptance_margin: "borderline_confirm_before_accepting",
+    meets_requirement: "compatible_with_selected_rule",
+    excess_space: "above_upper_limit_or_excess_space"
+  }[actionBandKey] || actionBandKey;
+}
+
+function decisionGateFromStatus(selected, row, evidence, permission, requiredMin, materialZoneJoinStatus){
+  const explicitGate = row.decision_gate ?? row["Decision gate"] ?? row.Decision_gate;
+  if(explicitGate) return explicitGate;
+  if(materialZoneJoinStatus === "missing_material_profile_zone_matrix_row"){
+    return "source_pending_or_unidentified";
+  }
+  const qaStatus = row.qa_gate_status ?? row["QA gate status"] ?? "";
+  const distanceConfidence = row.distance_confidence ?? row["Distance confidence"] ?? "";
+  const truthPartition = row.truth_partition ?? row["Truth partition"] ?? "";
+  if(qaStatus === "blocked_for_clinical_use" || distanceConfidence === "low" || distanceConfidence === "baja"){
+    return "geometry_or_registration_blocked";
+  }
+  if(["force_gray_pending_source", "force_gray_until_source_verified", "force_gray_until_product_and_ifu_identified"].includes(permission) || evidence === "pending_source" || !Number.isFinite(requiredMin)){
+    return "source_pending_or_unidentified";
+  }
+  if(["gray_internal_candidate_only", "force_gray_candidate_for_internal_qa_only"].includes(permission) || evidence === "secondary_unconfirmed"){
+    return "secondary_candidate";
+  }
+  if(truthPartition === "estimated_demo_not_clinical" || permission === "allow_demo_colors_only"){
+    return "demo_only";
+  }
+  if(selected.color_status && selected.color_status !== "low_confidence"){
+    return "verified_or_primary_archived_can_compare";
+  }
+  return "source_pending_or_unidentified";
+}
+
+function resolveViewerRowDecision(row){
+  const tooth = row.tooth_fdi ?? row.Diente ?? row.diente ?? row.tooth ?? "-";
+  const engineZone = row.engine_zone ?? row.Zona ?? row.zona ?? row.zone ?? "";
+  const zoneKey = row.zone_key ?? row["Zone key"] ?? row.Zone_key ?? engineZone;
+  const measured = finiteNumberOrNull(row.measured_mm ?? row["P50 firmado (mm)"] ?? row.p50_mm ?? row.p50);
+  const requiredMin = finiteNumberOrNull(row.required_min_mm ?? row["Min requerido (mm)"] ?? row.min_requerido_mm ?? row["Objetivo PREP (mm)"]);
+  const requiredIdeal = finiteNumberOrNull(row.required_ideal_mm ?? row["Ideal requerido (mm)"] ?? row.ideal_requerido_mm);
+  const upperLimit = finiteNumberOrNull(row.upper_limit_mm ?? row["Limite superior (mm)"] ?? row.limite_superior_mm);
+  const requiredDisplay = formatRequiredDisplay(requiredMin, row.required_display ?? row["Required display"]);
+  const evidence = row.evidence_status ?? row["Estado evidencia"] ?? row.evidencia ?? "";
+  const permission = row.viewer_color_permission ?? row["Row viewer color permission"] ?? row["Viewer color permission"] ?? "";
+  const qaStatus = row.qa_gate_status ?? row["QA gate status"] ?? "";
+  const distanceConfidence = row.distance_confidence ?? row["Distance confidence"] ?? "";
+  const materialKey = row.material_key ?? row["Material key"] ?? row.Material ?? activeProfile().material_key ?? "";
+  const profileKey = row.profile_key ?? row["Perfil material"] ?? row["Profile key"] ?? activeProfile().profile_key ?? "";
+  const materialReadout = readoutRowForMaterial(materialKey);
+  const materialZoneJoinStatus = materialZoneJoinStatusFor(row, row.rule);
+  const measuredDisplay = formatMm(measured);
+  const rowActionRule = row.action_rule_es ?? row.row_action_rule ?? row["Row action rule"] ?? "";
+  const sourceScopeForViewer = row.source_scope_for_viewer ?? row["Source scope for viewer"] ?? row["Source scope"] ?? "";
+  const caveatForViewer = [row.caveat_es ?? row.Caveat ?? row.caveat ?? "", qaStatus ? "QA: " + qaStatus : ""].filter(Boolean).join(" | ");
+  const noRequired = !Number.isFinite(requiredMin);
+  const canColor = canUseMaterialColor(permission);
+  let selected = ragColorStep("green_compatible", "verde - compatible con regla");
+
+  if(materialZoneJoinStatus === "missing_material_profile_zone_matrix_row"){
+    selected = ragColorStep(null, "gris - regla no encontrada");
+  }else if(qaStatus === "blocked_for_clinical_use" || distanceConfidence === "low" || distanceConfidence === "baja" || !Number.isFinite(measured)){
+    selected = ragColorStep("gray_qa_blocked", "gris - QA geometrico pendiente");
+  }else if(noRequired && evidence !== "pending_source"){
+    selected = ragColorStep(null, "gris - regla no encontrada");
+  }else if(["force_gray_pending_source", "force_gray_until_source_verified", "force_gray_until_product_and_ifu_identified"].includes(permission) || evidence === "pending_source" || noRequired){
+    selected = ragColorStep("gray_pending_source", "gris - pendiente de IFU/ficha tecnica");
+  }else if(["gray_internal_candidate_only", "force_gray_candidate_for_internal_qa_only"].includes(permission) || evidence === "secondary_unconfirmed"){
+    selected = ragColorStep("gray_secondary_candidate", "gris - candidato no confirmado");
+  }else if(canColor && measured < requiredMin){
+    selected = ragColorStep("red_below_minimum", "rojo - falta espacio");
+  }else if(canColor && Number.isFinite(upperLimit) && measured > upperLimit){
+    selected = ragColorStep("purple_over_space", "morado - sobreespacio");
+  }else if(canColor && Number.isFinite(requiredIdeal) && measured >= requiredMin && measured < requiredIdeal){
+    selected = ragColorStep("yellow_limited_margin", "amarillo - por debajo del ideal");
+  }else if(canColor && !Number.isFinite(requiredIdeal) && measured >= requiredMin && measured - requiredMin <= 0.05){
+    selected = ragColorStep("yellow_limited_margin", "amarillo - justo al limite");
+  }else if(canColor && measured >= requiredMin){
+    selected = ragColorStep("green_compatible", "verde - compatible con regla");
+  }else{
+    selected = ragColorStep(null, "gris - regla no encontrada");
+  }
+
+  const deficit = Number.isFinite(requiredMin) && Number.isFinite(measured) ? Math.max(requiredMin - measured, 0) : null;
+  const truthPartition = row.truth_partition ?? row["Truth partition"] ?? truthPartitionFor(evidence, permission, profileKey);
+  const decisionGate = decisionGateFromStatus(selected, row, evidence, permission, requiredMin, materialZoneJoinStatus);
+  const exposedDeficit = finiteNumberOrNull(row.deficit_mm ?? row["Deficit mm"] ?? (rowComparisonAllowed(decisionGate, materialZoneJoinStatus) ? deficit : null));
+  const actionBand = actionBandForRow(decisionGate, measured, requiredMin, requiredIdeal, upperLimit, exposedDeficit, materialZoneJoinStatus);
+  const legacyActionBandKey = row.legacy_action_band_key ?? row["Legacy action band key"] ?? actionBand.legacy_action_band_key ?? actionBand.action_band_key;
+  const deficitDisplayEs = row.deficit_display_es ?? row["Deficit display ES"] ?? actionBand.deficit_display_es;
+  const colorKey = row.color_key ?? row["Color key"] ?? selected.color_key ?? selected.color_status ?? "gray";
+  const sourceTrace = sourceTraceForViewerRow({
+    materialKey,
+    evidence,
+    permission,
+    requiredMin,
+    decisionGate,
+    colorKey,
+    deficitDisplayEs,
+    materialZoneJoinStatus
+  });
+  const values = {
+    tooth_fdi: tooth,
+    zone_label: zoneLabelEs(zoneKey, engineZone),
+    zone_label_es: zoneLabelEs(zoneKey, engineZone),
+    measured_display: measuredDisplay,
+    measured_mm_display: measuredDisplay,
+    required_display: requiredDisplay,
+    required_display_es: requiredDisplay,
+    deficit_display: deficitDisplayEs || deficitDisplay(requiredMin, measured, exposedDeficit),
+    deficit_display_es: deficitDisplayEs || deficitDisplay(requiredMin, measured, exposedDeficit),
+    action_band_key: canonicalActionBandKey(row.action_band_key ?? row["Action band key"] ?? actionBand.action_band_key, decisionGate, sourceTrace.source_trace_token, materialZoneJoinStatus),
+    legacy_action_band_key: legacyActionBandKey,
+    rag_status: selected.decision_label_es || "gris - regla no encontrada",
+    decision_gate: decisionGate,
+    material_zone_join_status: materialZoneJoinStatus,
+    color_key: colorKey,
+    source_trace_status_es: sourceTrace.source_trace_status_es,
+    source_trace_token: sourceTrace.source_trace_token,
+    color_permission_display_es: sourceTrace.color_permission_display_es,
+    color_label_es: colorLabelEs(selected),
+    decision_label_es: selected.decision_label_es || "gris - regla no encontrada",
+    material_display: row["Material display"] ?? row.material_display ?? row["Material"] ?? activeProfile().display_name ?? materialKey,
+    technical_action_es: row.technical_action_es ?? row["Technical action ES"] ?? selected.technical_action_es ?? rowActionRule ?? "No hay cruce trazable de material/perfil/zona. Mostrar requerido como pendiente y pedir regla versionada.",
+    action_rule: selected.technical_action_es || rowActionRule || "No hay cruce trazable de material/perfil/zona. Mostrar requerido como pendiente y pedir regla versionada.",
+    action_rule_es: rowActionRule || selected.technical_action_es || "No hay cruce trazable de material/perfil/zona. Mostrar requerido como pendiente y pedir regla versionada.",
+    source_scope_for_viewer: sourceScopeForViewer,
+    caveat_es: caveatForViewer || (qaStatus ? "QA: " + qaStatus : "")
+  };
+  const sentenceTemplate = materialZoneRowSchemaContract?.viewer_sentence_template_es ||
+    visibleRowOutputContract?.viewer_sentence_template_es ||
+    technicalActionThresholdsContract?.output_sentence_template_es ||
+    materialSourceHandoffContract?.viewer_sentence_template_es ||
+    materialZoneRequirementsContract?.viewer_sentence_template_es ||
+    materialRagActionContract?.row_sentence_template_es ||
+    materialZoneReadoutContract?.primary_viewer_sentence_template_es ||
+    materialDecisionGateContract?.viewer_sentence_template_es ||
+    rowDecisionResolver?.viewer_sentence_template_es ||
+    "Diente {tooth_fdi}, zona {zone_label}: medido {measured_display}; requerido {required_display}; deficit {deficit_display}; estado {rag_status}; accion tecnica: {technical_action_es}";
+  return {
+    ...values,
+    viewer_sentence_es: templateValue(sentenceTemplate, values),
+    deficit_mm: sourceTrace.source_trace_token.startsWith("blocked_") ? null : exposedDeficit,
+    action_band_key: values.action_band_key,
+    legacy_action_band_key: legacyActionBandKey,
+    deficit_display_es: sourceTrace.deficit_display_es || deficitDisplayEs,
+    decision_gate: decisionGate,
+    color_key: sourceTrace.color_key || colorKey,
+    color_status: selected.color_status || "low_confidence",
+    color_hex: selected.color_hex || "#8ba6b2",
+    material_label: row["Material"] ?? activeProfile().display_name ?? materialKey,
+    profile_label: row["Selector label"] ?? profileKey,
+    restoration_type: row.restoration_type ?? row["Restoration type"] ?? activeProfile().restoration_type ?? "",
+    evidence_status: evidence,
+    truth_partition: truthPartition,
+    source_refs: row.source_refs ?? row.Fuentes ?? row.fuentes ?? "",
+    source_scope_for_viewer: sourceScopeForViewer,
+    source_trace_status_es: sourceTrace.source_trace_status_es,
+    source_trace_token: sourceTrace.source_trace_token,
+    color_permission_display_es: sourceTrace.color_permission_display_es,
+    source_display_es: materialReadout.required_source_summary_es || sourceScopeForViewer || "",
+    verification_display_es: materialReadout.verification_display_es || "",
+    caveat_es: [rowActionRule, caveatForViewer, qaStatus ? "QA: " + qaStatus : ""].filter(Boolean).join(" | "),
+    viewer_sentence_es: templateValue(sentenceTemplate, values)
+  };
+}
+
+function readableRuleMeta(value){
+  return String(value || "sin dato").replaceAll("_", " ");
+}
+
+function actionFor(status, zone){
+  const rule = zoneRule(zone);
+  if(rule.technical_action) return rule.technical_action;
+  if(status === "insufficient_space") return "Falta espacio frente a 0.5 mm; tallar mas en esta zona.";
+  if(status === "borderline") return "Zona limite; confirmar IFU, cementacion, sustrato y confianza del registro.";
+  if(status === "over_reduced_or_excess_space") return "Espesor alto: para esta demo queda OK y no requiere tallar mas.";
+  if(status === "low_confidence") return "No usar como decision tecnica final. Falta fuente, registro fiable o segmentacion validada.";
+  return "Espacio compatible con la regla seleccionada, sujeto a validacion de caso.";
+}
+
+function engineRowAction(row){
+  const resolved = resolveViewerRowDecision(row);
+  if(resolved.viewer_sentence_es) return resolved.viewer_sentence_es;
+  if(row["Frase visible"]) return row["Frase visible"];
+  const measured = Number(row["P50 firmado (mm)"]);
+  const required = Number(row["Objetivo PREP (mm)"] ?? row["Min requerido (mm)"]);
+  const zone = row["Zone key"] || row.Zona || "zona";
+  const tooth = row.Diente || "-";
+  const material = row.Material || row["Perfil material"] || "perfil";
+  const actionKey = row["Action key"] || "";
+  if(actionKey === "validar_registro_o_medicion"){
+    return "Diente " + tooth + " " + zone + ": medicion no apta para decision tecnica. Validar registro, segmentacion y metodo antes de colorear.";
+  }
+  if(actionKey === "pedir_ifu_no_colorear"){
+    return "Diente " + tooth + " " + zone + ": medido " + formatMm(measured) + ". No hay espesor requerido verificado para " + material + "; pedir IFU/ficha tecnica y mantener gris.";
+  }
+  if(actionKey === "candidato_secundario_no_activo"){
+    return "Diente " + tooth + " " + zone + ": medido " + formatMm(measured) + ". Existe candidato secundario, pero no se usa como tallado por color.";
+  }
+  if(actionKey === "tallar_mas_o_revisar_indicacion"){
+    return "Diente " + tooth + " " + zone + ": medido " + formatMm(measured) + " frente a requerido " + formatMm(required) + ". Falta espacio tecnico; revisar reduccion, wax-up o indicacion.";
+  }
+  if(actionKey === "zona_limite_confirmar_caveat"){
+    return "Diente " + tooth + " " + zone + ": medido " + formatMm(measured) + " esta en zona limite. Confirmar IFU, cementacion, sustrato y QA antes de aceptar.";
+  }
+  if(actionKey === "espacio_compatible_con_caveat"){
+    return "Diente " + tooth + " " + zone + ": medido " + formatMm(measured) + " cumple requerido " + formatMm(required) + "; compatible como plan tecnico con caveat de fuente/QA.";
+  }
+  if(actionKey === "revisar_sobreespacio_o_soporte"){
+    return "Diente " + tooth + " " + zone + ": espesor alto; revisar soporte, diseno y compensacion.";
+  }
+  if(row["Accion tecnica"]) return row["Accion tecnica"];
+  return "";
+}
+
+function visibleLocalSentence(row){
+  const resolved = resolveViewerRowDecision({
+    tooth_fdi: row.tooth,
+    engine_zone: row.zone,
+    zone_key: row.rule.zone_key,
+    measured_mm: row.p50,
+    required_min_mm: row.rule.required_min_mm,
+    required_ideal_mm: row.rule.required_ideal_mm,
+    upper_limit_mm: row.rule.upper_limit_mm,
+    required_display: formatRequiredDisplay(row.rule.required_min_mm),
+    evidence_status: row.rule.evidence_status,
+    source_refs: row.rule.source_refs || [],
+    source_scope_for_viewer: row.rule.source_scope || "",
+    viewer_color_permission: activeProfile().viewer_color_permission || "allow_color_with_caveat",
+    row_action_rule: row.rule.technical_action || ""
+  });
+  if(resolved.viewer_sentence_es) return resolved.viewer_sentence_es;
+  const actionKey = actionKeyFor(row.status, row.zone);
+  const measured = formatMm(row.p50);
+  const required = formatMm(row.rule.required_min_mm);
+  const zone = row.rule.zone_key || row.zone || "zona";
+  const prefix = "Diente " + row.tooth + ", " + zone + ": medido " + measured + ".";
+  if(actionKey === "pedir_ifu_no_colorear"){
+    return prefix + " " + activeProfile().profile_key + " no tiene espesor requerido verificado; requerido: pendiente de IFU/ficha tecnica. Accion: mantener gris y pedir fuente.";
+  }
+  if(actionKey === "candidato_secundario_no_activo"){
+    return prefix + " Hay candidato " + required + ", pero la fuente no es primaria; accion: mostrar como QA interno, no rojo/verde.";
+  }
+  if(actionKey === "tallar_mas_o_revisar_indicacion"){
+    return "Diente " + row.tooth + ", " + zone + ": medido " + measured + "; requerido " + required + ". Accion: falta espacio tecnico, revisar reduccion, wax-up o indicacion.";
+  }
+  if(actionKey === "zona_limite_confirmar_caveat"){
+    return "Diente " + row.tooth + ", " + zone + ": medido " + measured + "; requerido " + required + ". Accion: zona limite, confirmar IFU/cementacion/sustrato/QA antes de aceptar.";
+  }
+  return "Diente " + row.tooth + ", " + zone + ": medido " + measured + "; requerido " + required + ". Accion: espacio compatible como plan tecnico, con caveat de fuente y QA visible.";
+}
+
+function analyzeDistances(){
+  const prePos = positionsArray(preopMesh.geometry);
+  const waxGeom = waxupMesh.geometry;
+  const waxPos = positionsArray(waxGeom);
+  waxupPositions = waxPos;
+  const bbox = waxGeom.boundingBox;
+  const size = bbox.getSize(new THREE.Vector3());
+  const cellSize = Math.max(Math.min(size.x, size.y, size.z) / 80, .35);
+  const grid = buildGrid(prePos, cellSize);
+
+  const colors = new Float32Array(waxPos.length);
+  const distances = new Float32Array(waxPos.length / 3);
+  const teeth = new Int16Array(waxPos.length / 3);
+  const zones = new Array(waxPos.length / 3);
+
+  let xMin = Infinity, xMax = -Infinity;
+  let yMin = Infinity, yMax = -Infinity;
+  let zMin = Infinity, zMax = -Infinity;
+  for(let i=0;i<waxPos.length;i+=3){
+    const x = waxPos[i], y = waxPos[i+1], z = waxPos[i+2];
+    if(x < xMin) xMin = x;
+    if(x > xMax) xMax = x;
+    if(y < yMin) yMin = y;
+    if(y > yMax) yMax = y;
+    if(z < zMin) zMin = z;
+    if(z > zMax) zMax = z;
+  }
+  const spanX = xMax - xMin;
+  const spanY = yMax - yMin;
+  const horizontalAxis = spanX >= spanY ? "x" : "y";
+  const hMin = horizontalAxis === "x" ? xMin : yMin;
+  const hMax = horizontalAxis === "x" ? xMax : yMax;
+  const fdi = [15,14,13,12,11,21,22,23,24,25];
+
+  for(let i=0, v=0;i<waxPos.length;i+=3, v++){
+    const x=waxPos[i], y=waxPos[i+1], z=waxPos[i+2];
+    const d = nearestDistance(x,y,z, prePos, grid, cellSize);
+    const h = horizontalAxis === "x" ? x : y;
+    const toothIndex = Math.max(0, Math.min(9, Math.floor(((h-hMin)/(hMax-hMin || 1))*10)));
+    const zn = (z-zMin)/(zMax-zMin || 1);
+    const zone = zn <= 1/3 ? "Incisal" : zn <= 2/3 ? "Medio" : "Cervical";
+    distances[v] = d;
+    teeth[v] = fdi[toothIndex];
+    zones[v] = zone;
+  }
+
+  for(let i=0, v=0;i<waxPos.length;i+=3, v++){
+    const zone = zones[v] || "Medio";
+    const c = colorFor(distances[v], zone);
+    colors[i]=c[0]; colors[i+1]=c[1]; colors[i+2]=c[2];
+  }
+
+  waxGeom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  waxGeom.attributes.color.needsUpdate = true;
+  waxupMesh.material.vertexColors = true;
+  waxupMesh.material.color.set(0xffffff);
+  waxupMesh.material.transparent = false;
+  waxupMesh.material.opacity = 1;
+  waxupMesh.material.roughness = .58;
+  waxupMesh.material.emissive.set(0x020506);
+  waxupMesh.material.emissiveIntensity = .015;
+  waxupMesh.material.needsUpdate = true;
+  lastDistances = distances;
+  lastTeeth = teeth;
+  lastZones = zones;
+  lastAnalysis = buildAnalysis(distances);
+  updateSummary(distances);
+  updateTable(distances, teeth, zones);
+  renderQaGate(lastAnalysis.qa_gate, lastAnalysis.distance || {});
+  exportCsvBtn.disabled = false;
+  exportJsonBtn.disabled = false;
+  setStatus("Heatmap interactivo calculado con perfil " + activeProfile().display_name + " / " + activeProfile().restoration_type + ". Toca o pasa el cursor sobre el encerado para leer diente, zona y espesor en el punto. Exportacion CSV/JSON disponible.");
+}
+
+function buildAnalysis(distances){
+  const arr = Array.from(distances);
+  const profile = activeProfile();
+  let low = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for(let i=0; i<arr.length; i++){
+    const d = arr[i];
+    if(statusFor(d, lastZones?.[i] || "Medio") === "insufficient_space") low++;
+    if(d < min) min = d;
+    if(d > max) max = d;
+  }
+  return {
+    app: "BigColor PREP 2",
+    version: "V0 tecnica local",
+    generatedAt: new Date().toISOString(),
+    material: materialSelect.value,
+    input_unit: inputUnit.value,
+    materialProfile: {
+      profile_key: profile.profile_key,
+      material_key: profile.material_key,
+      display_name: profile.display_name,
+      restoration_type: profile.restoration_type,
+      overall_status: profile.overall_status,
+      caveat: profile.caveat
+    },
+    distanceMethod: "nearest_vertex_fast_browser",
+    qa_gate: {
+      status: "blocked_for_clinical_use",
+      blockers: ["browser_metric_not_engine_output", "registration_not_validated"],
+      warnings: ["distance_method_fast_vertex_signed"],
+      can_use_for_clinical_decision: false,
+      can_use_for_demo_or_qa: true
+    },
+    clinicalCaveat: "Demo tecnica: requiere validacion de registro, unidades, segmentacion y repetibilidad antes de uso clinico.",
+    summaryMm: {
+      min: Number(min.toFixed(3)),
+      p5: Number(percentile(arr, 5).toFixed(3)),
+      p50: Number(percentile(arr, 50).toFixed(3)),
+      p95: Number(percentile(arr, 95).toFixed(3)),
+      max: Number(max.toFixed(3)),
+      lowVertexRatio: Number((low / arr.length).toFixed(4))
+    }
+  };
+}
+
+function percentile(values, p){
+  const arr = Array.from(values).sort((a,b)=>a-b);
+  const idx = Math.max(0, Math.min(arr.length-1, Math.floor((p/100)*(arr.length-1))));
+  return arr[idx];
+}
+
+function updateSummary(distances){
+  const p50v = percentile(distances, 50);
+  const p95v = percentile(distances, 95);
+  let low = 0;
+  for(let i=0; i<distances.length; i++){
+    if(statusFor(distances[i], lastZones?.[i] || "Medio") === "insufficient_space") low++;
+  }
+  document.getElementById("p50").textContent = p50v.toFixed(2) + " mm";
+  document.getElementById("p95").textContent = p95v.toFixed(2) + " mm";
+  document.getElementById("lowPct").textContent = Math.round(low / distances.length * 100) + "%";
+  document.getElementById("meshCount").textContent = String(distances.length);
+}
+
+function updateTable(distances, teeth, zones){
+  const groups = new Map();
+  for(let i=0;i<distances.length;i++){
+    const key = teeth[i] + "|" + zones[i];
+    let g = groups.get(key);
+    if(!g){ g = []; groups.set(key,g); }
+    g.push(distances[i]);
+  }
+  const rows = [];
+  for(const [key, vals] of groups){
+    const [tooth, zone] = key.split("|");
+    const p50 = percentile(vals, 50);
+    const status = statusFor(p50, zone);
+    const rule = zoneRule(zone);
+    const minRequired = rule.required_min_mm;
+    const deficit = minRequired == null ? null : Math.max(0, Number(minRequired) - p50);
+    rows.push({tooth:Number(tooth), zone, p50, status, state: statusLabel(status), decision: evidenceDecisionLabel(rule, status), deficit, rule, vertices:vals.length});
+  }
+  rows.sort((a,b)=>a.tooth-b.tooth || zoneOrder(a.zone)-zoneOrder(b.zone));
+  lastRows = rows.map(r => {
+    const resolved = resolveViewerRowDecision({
+      tooth: r.tooth,
+      zone: r.zone,
+      p50: r.p50,
+      min_requerido_mm: r.rule.required_min_mm,
+      evidencia: r.rule.evidence_status,
+      row_action_rule: r.rule.row_action_rule,
+      truth_partition: r.rule.truth_partition,
+      viewer_color_permission: r.rule.row_viewer_color_permission,
+      material_zone_join_status: r.rule.material_zone_join_status,
+      qa_gate_status: "blocked_for_clinical_use",
+      distance_confidence: "baja"
+    });
+    return {
+      diente: r.tooth,
+      zona: r.zone,
+      zone_key: r.rule.zone_key,
+      p50_mm: Number(r.p50.toFixed(3)),
+      estado: r.state,
+      decision_prep: r.decision,
+      deficit_vs_objetivo_mm: rowComparisonAllowed(resolved.decision_gate, resolved.material_zone_join_status) && r.deficit != null ? Number(r.deficit.toFixed(3)) : null,
+      decision_gate: resolved.decision_gate,
+      action_band_key: resolved.action_band_key,
+      color_key: resolved.color_key,
+      deficit_mm: resolved.deficit_mm,
+      deficit_display_es: resolved.deficit_display_es,
+      material_zone_join_status: resolved.material_zone_join_status,
+      source_trace_status_es: resolved.source_trace_status_es,
+      source_trace_token: resolved.source_trace_token,
+      color_permission_display_es: resolved.color_permission_display_es,
+      viewer_sentence_es: resolved.viewer_sentence_es,
+      viewer_short_action_es: resolved.technical_action_es,
+      viewer_required_summary_es: resolved.required_display_es,
+      viewer_source_summary_es: resolved.source_trace_status_es,
+      evaluacion_material: r.status,
+      action_key: actionKeyFor(r.status, r.zone),
+      min_requerido_mm: r.rule.required_min_mm,
+      ideal_requerido_mm: r.rule.required_ideal_mm,
+      limite_superior_mm: r.rule.upper_limit_mm,
+      evidencia: r.rule.evidence_status,
+      fuentes: r.rule.source_refs || [],
+      source_scope: r.rule.source_scope || "",
+      material_zone_join_status: resolved.material_zone_join_status,
+      zone_mapping_status: r.rule.zone_mapping_status || "",
+      accion_tecnica: actionFor(r.status, r.zone),
+      technical_action_es: resolved.technical_action_es,
+      frase_visible: resolved.viewer_sentence_es || visibleLocalSentence(r),
+      caveat: r.rule.caveat || activeProfile().caveat,
+      vertices: r.vertices
+    };
+  });
+  zoneRows.innerHTML = rows.map(r => {
+    const evidence = readableRuleMeta(r.rule.evidence_status);
+    const sourceScope = readableRuleMeta(r.rule.source_scope);
+    const zoneMapping = readableRuleMeta(r.rule.zone_mapping_status);
+    const action = actionFor(r.status, r.zone);
+    const resolved = resolveViewerRowDecision({
+      tooth: r.tooth,
+      zone: r.zone,
+      p50: r.p50,
+      min_requerido_mm: r.rule.required_min_mm,
+      evidencia: r.rule.evidence_status,
+      row_action_rule: r.rule.row_action_rule,
+      truth_partition: r.rule.truth_partition,
+      viewer_color_permission: r.rule.row_viewer_color_permission,
+      material_zone_join_status: r.rule.material_zone_join_status,
+      qa_gate_status: "blocked_for_clinical_use",
+      distance_confidence: "baja"
+    });
+    const trace = [evidence, traceCauseFor(r.rule), resolved.decision_gate ? "Compuerta: " + readableRuleMeta(resolved.decision_gate) : "", resolved.action_band_key ? "Banda: " + readableRuleMeta(resolved.action_band_key) : "", resolved.material_zone_join_status ? "Join: " + readableRuleMeta(resolved.material_zone_join_status) : "", "Alcance: " + sourceScope, "Mapeo: " + zoneMapping, "Accion: " + readableRuleMeta(actionKeyFor(r.status, r.zone)), "Accion tecnica: " + action].filter(Boolean).join(" | ");
+    return '<tr class="'+escapeHtml(traceClassFor(r.rule))+'"><td>'+escapeHtml(r.tooth)+'</td><td>'+escapeHtml(r.zone)+'</td><td>'+escapeHtml(r.p50.toFixed(2))+'</td><td>'+escapeHtml(compactDeficitDisplay(resolved))+'</td><td>'+escapeHtml(r.decision)+'</td><td class="rule-meta" title="'+escapeHtml([action, r.rule.caveat || activeProfile().caveat || ""].filter(Boolean).join(" | "))+'">'+escapeHtml(trace)+'</td></tr>';
+  }).join("");
+}
+
+function zoneOrder(z){ return z === "Cervical" ? 0 : z === "Medio" ? 1 : 2; }
+
+function stateFor(value, zone){
+  return statusLabel(statusFor(value, zone));
+}
+
+function downloadText(filename, mime, text){
+  const blob = new Blob([text], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(value){
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+}
+
+exportCsvBtn.addEventListener("click", () => {
+  if(!lastRows.length) return;
+  if(lastRows[0] && Object.prototype.hasOwnProperty.call(lastRows[0], "Diente")){
+    const header = Object.keys(lastRows[0]);
+    const lines = [header.map(csvEscape).join(",")];
+    for(const row of lastRows){
+      lines.push(header.map(key => csvEscape(row[key])).join(","));
+    }
+    downloadText("bigcolor_prep_2_engine_table.csv", "text/csv;charset=utf-8", lines.join("\n") + "\n");
+    return;
+  }
+  const header = ["Diente","Zona","Zone_key","P50_mm","Deficit_vs_objetivo_mm","Decision_gate","Action_band_key","Legacy_action_band_key","Color_key","Deficit_mm","Deficit_display_ES","Source_trace_status_ES","Source_trace_token","Color_permission_display_ES","Viewer_sentence_ES","Viewer_short_action_ES","Viewer_required_summary_ES","Viewer_source_summary_ES","Technical_action_ES","Decision_PREP","Estado","Evaluacion_material","Action_key","Min_requerido_mm","Ideal_requerido_mm","Limite_superior_mm","Evidencia","Fuentes","Source_scope","Zone_mapping_status","Accion_tecnica","Frase_visible","Caveat","Vertices"];
+  const lines = [header.join(",")];
+  for(const row of lastRows){
+    lines.push([
+      row.diente,
+      row.zona,
+      row.zone_key,
+      row.p50_mm,
+      row.deficit_vs_objetivo_mm,
+      row.decision_gate,
+      row.action_band_key,
+      row.legacy_action_band_key,
+      row.color_key,
+      row.deficit_mm,
+      row.deficit_display_es,
+      row.source_trace_status_es,
+      row.source_trace_token,
+      row.color_permission_display_es,
+      row.viewer_sentence_es,
+      row.viewer_short_action_es,
+      row.viewer_required_summary_es,
+      row.viewer_source_summary_es,
+      row.technical_action_es,
+      row.decision_prep,
+      row.estado,
+      row.evaluacion_material,
+      row.action_key,
+      row.min_requerido_mm,
+      row.ideal_requerido_mm,
+      row.limite_superior_mm,
+      row.evidencia,
+      (row.fuentes || []).join(";"),
+      row.source_scope,
+      row.zone_mapping_status,
+      row.accion_tecnica,
+      row.frase_visible,
+      row.caveat,
+      row.vertices
+    ].map(csvEscape).join(","));
+  }
+  downloadText("bigcolor_prep_2_table.csv", "text/csv;charset=utf-8", lines.join("\n") + "\n");
+});
+
+exportJsonBtn.addEventListener("click", () => {
+  if(!lastAnalysis) return;
+  downloadText(
+    "bigcolor_prep_2_analysis.json",
+    "application/json;charset=utf-8",
+    JSON.stringify({analysis:lastAnalysis, table:lastRows}, null, 2) + "\n"
+  );
+});
+
+function readMeasurementAtPointer(event){
+  if(!waxupMesh || !lastDistances) return;
+  event.preventDefault();
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObject(waxupMesh, false)[0];
+  if(!hit || hit.faceIndex == null){
+    readNearestProjectedVertex(event, rect);
+    return;
+  }
+  const base = hit.faceIndex * 3;
+  const pos = waxupMesh.geometry.getAttribute("position");
+  const a = new THREE.Vector3().fromBufferAttribute(pos, base);
+  const b = new THREE.Vector3().fromBufferAttribute(pos, base + 1);
+  const c = new THREE.Vector3().fromBufferAttribute(pos, base + 2);
+  const bary = new THREE.Vector3();
+  THREE.Triangle.getBarycoord(hit.point, a, b, c, bary);
+  const d0 = lastDistances[base] ?? 0;
+  const d1 = lastDistances[base + 1] ?? d0;
+  const d2 = lastDistances[base + 2] ?? d0;
+  const d = (bary.x * d0) + (bary.y * d1) + (bary.z * d2);
+  const nearestOffset = bary.x >= bary.y && bary.x >= bary.z ? 0 : bary.y >= bary.z ? 1 : 2;
+  const vertexIndex = base + nearestOffset;
+  const tooth = lastTeeth[vertexIndex];
+  const zone = lastZones[vertexIndex];
+  updateHoverMeasurement(d, tooth, zone, "punto " + hit.point.x.toFixed(1) + ", " + hit.point.y.toFixed(1) + ", " + hit.point.z.toFixed(1));
+}
+
+function readNearestProjectedVertex(event, rect){
+  const pos = waxupMesh.geometry.getAttribute("position");
+  const point = new THREE.Vector3();
+  let bestIndex = -1;
+  let bestD2 = Infinity;
+  const targetX = event.clientX - rect.left;
+  const targetY = event.clientY - rect.top;
+  const step = pos.count > 70000 ? 2 : 1;
+
+  for(let i=0; i<pos.count; i+=step){
+    point.fromBufferAttribute(pos, i).project(camera);
+    const sx = (point.x * .5 + .5) * rect.width;
+    const sy = (-point.y * .5 + .5) * rect.height;
+    const dx = sx - targetX;
+    const dy = sy - targetY;
+    const d2 = dx * dx + dy * dy;
+    if(d2 < bestD2){
+      bestD2 = d2;
+      bestIndex = i;
+    }
+  }
+
+  if(bestIndex < 0 || bestD2 > 38 * 38) return;
+  const d = lastDistances[bestIndex];
+  const tooth = lastTeeth[bestIndex];
+  const zone = lastZones[bestIndex];
+  updateHoverMeasurement(d, tooth, zone, "vertice cercano · " + Math.sqrt(bestD2).toFixed(0) + " px");
+}
+
+function updateHoverMeasurement(distance, tooth, zone, source){
+  const big = hoverCard.querySelector(".big");
+  big.textContent = distance.toFixed(2) + " mm";
+  const c = colorFor(distance, zone).map(v => Math.round(v * 255));
+  big.style.color = "rgb(" + c.join(",") + ")";
+  hoverMeta.textContent = "Diente " + tooth + " | " + zone + " | " + stateFor(distance, zone) + " | " + source;
+}
+
+renderer.domElement.addEventListener("pointermove", readMeasurementAtPointer, {passive:false});
+renderer.domElement.addEventListener("pointerdown", readMeasurementAtPointer, {passive:false});
+renderer.domElement.addEventListener("mousemove", readMeasurementAtPointer, {passive:false});
+renderer.domElement.addEventListener("click", readMeasurementAtPointer, {passive:false});
+</script>
+</body>
+</html>

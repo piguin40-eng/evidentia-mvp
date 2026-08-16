@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+.playwright-cli/
+logs/
+outputs/*
+!outputs/pedro-local-ranking-2026-08-06-summary.csv
+qa/
+backups/
