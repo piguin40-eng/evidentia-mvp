@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: abutmentiq
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: abutmentiq-data
+      mountPath: /var/data/abutmentiq
+      sizeGB: 10
+    envVars:
+      - key: ABUTMENTIQ_DATA_ROOT
+        value: /var/data/abutmentiq
+      - key: ABUTMENTIQ_APP_USERNAME
+        value: reviewer
+      - key: ABUTMENTIQ_APP_PASSWORD
+        generateValue: true
+      - key: ABUTMENTIQ_PLATFORM_INGEST_TOKEN
+        generateValue: true
+      - key: ABUTMENTIQ_IDENTITY_ENCRYPTION_KEY
+        generateValue: true
+      - key: ABUTMENTIQ_ALLOWED_ORIGIN
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

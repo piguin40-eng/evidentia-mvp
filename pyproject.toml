@@ -1,0 +1,23 @@
+[project]
+name = "abutmentiq-review-agent"
+version = "0.2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "uvicorn[standard]>=0.35,<1",
+  "python-multipart>=0.0.20,<1",
+  "joblib>=1.4,<2",
+  "scikit-learn>=1.6,<2",
+  "trimesh>=4.8,<5",
+  "numpy>=2.0,<3",
+  "scipy>=1.14,<2",
+  "cryptography>=50,<51",
+  "httpx>=0.28,<1",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.0.3,<10", "httpx>=0.28,<1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["backend/tests"]

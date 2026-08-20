@@ -1,0 +1,35 @@
+{
+  "name": "abutmentiq-review-preview",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "backend": "set -a; [ ! -f .env.local ] || . ./.env.local; set +a; PYTHONPATH=. uv run uvicorn backend.asgi:app --host 127.0.0.1 --port 8767",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:backend": "uv run pytest -q",
+    "lint": "oxlint src"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.185.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "oxlint": "^1.71.0",
+    "typescript": "~6.0.0",
+    "jsdom": "^26.0.0",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}
