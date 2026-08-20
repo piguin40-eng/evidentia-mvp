@@ -11,3 +11,9 @@ services:
     envVars:
       - key: BIGCOLOR_PREP_ENV
         value: production
+      - key: BIGCOLOR_PREP_SAFE_NUMPY_NN
+        value: "1"
+      - key: BIGCOLOR_PREP_SAFE_VERTEX_SAMPLE_LIMIT
+        value: "8000"
+      - key: BIGCOLOR_PREP_SAFE_VERTEX_CHUNK_SIZE
+        value: "384"

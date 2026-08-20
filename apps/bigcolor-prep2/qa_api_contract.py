@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import threading
+from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -52,14 +54,19 @@ def _walk_keys(value: Any, prefix: str = "") -> list[str]:
 
 
 def _post_demo_analyze(port: int) -> tuple[int, dict[str, Any]]:
-    body, content_type = _multipart_body(
+    return _post_analyze(
+        port,
         {
             "mode": "demo",
             "material": "ips_emax_press",
             "measurement_method": "normal_ray",
             "ray_direction": "bidirectional",
-        }
+        },
     )
+
+
+def _post_analyze(port: int, fields: dict[str, str]) -> tuple[int, dict[str, Any]]:
+    body, content_type = _multipart_body(fields)
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
     try:
         connection.request(
@@ -73,6 +80,20 @@ def _post_demo_analyze(port: int) -> tuple[int, dict[str, Any]]:
         return response.status, payload
     finally:
         connection.close()
+
+
+@contextmanager
+def _temporary_env(updates: dict[str, str]):
+    previous = {key: os.environ.get(key) for key in updates}
+    os.environ.update(updates)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def check_demo_analyze_endpoint() -> None:
@@ -131,13 +152,62 @@ def check_demo_analyze_endpoint() -> None:
         _fail(f"Viewer sentence ES bloqueada no debe vender deficit clinico: {viewer_sentence!r}")
 
 
+def check_production_safe_endpoint() -> None:
+    with _temporary_env(
+        {
+            "BIGCOLOR_PREP_ENV": "production",
+            "BIGCOLOR_PREP_SAFE_NUMPY_NN": "1",
+            "BIGCOLOR_PREP_SAFE_VERTEX_SAMPLE_LIMIT": "8000",
+            "BIGCOLOR_PREP_SAFE_VERTEX_CHUNK_SIZE": "384",
+        }
+    ):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), QuietPrepAppHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            port = int(server.server_address[1])
+            status, payload = _post_analyze(
+                port,
+                {
+                    "mode": "demo",
+                    "material": "demo_veneer",
+                    "measurement_method": "normal_ray",
+                    "ray_direction": "bidirectional",
+                },
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+    if status != 200:
+        _fail(f"/api/analyze produccion devolvio HTTP {status}: {payload.get('error')}")
+    if payload.get("ok") is not True:
+        _fail(f"/api/analyze produccion ok=False: {payload.get('error')}")
+    if int(payload.get("rowCount") or 0) <= 0:
+        _fail("/api/analyze produccion no devolvio filas")
+    server_payload = payload.get("server") or {}
+    if server_payload.get("requestedMeasurementMethod") != "normal_ray":
+        _fail(f"requestedMeasurementMethod inesperado: {server_payload!r}")
+    if server_payload.get("executedMeasurementMethod") != "fast_vertex":
+        _fail(f"executedMeasurementMethod inesperado: {server_payload!r}")
+    distance = (payload.get("analysis") or {}).get("distance") or {}
+    if distance.get("method") != "nearest_vertex_normal_safe_numpy":
+        _fail(f"distance.method produccion inesperado: {distance.get('method')!r}")
+    qa_gate = (payload.get("analysis") or {}).get("qa_gate") or {}
+    if qa_gate.get("status") != "blocked_for_clinical_use":
+        _fail(f"qa_gate.status produccion inesperado: {qa_gate.get('status')!r}")
+
+
 def main() -> None:
     check_demo_analyze_endpoint()
+    check_production_safe_endpoint()
     print("QA_API_CONTRACT_OK")
     print("endpoint=/api/analyze")
     print("mode=demo")
     print("material=ips_emax_press")
     print("measurement_method=normal_ray")
+    print("production_safe_numpy=ok")
 
 
 if __name__ == "__main__":

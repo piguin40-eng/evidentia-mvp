@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,8 @@ DEFAULT_RAY_SAMPLE_COUNT = 5_000
 DEFAULT_RAY_MAX_DEPTH_MM = 8.0
 NORMAL_RAY_DIRECTIONS = ("bidirectional", "plus_normal", "minus_normal")
 DEFAULT_LOCAL_REGISTRATION_SAMPLE_LIMIT = 1000
+DEFAULT_SAFE_VERTEX_SAMPLE_LIMIT = 8_000
+DEFAULT_SAFE_VERTEX_CHUNK_SIZE = 512
 UNIT_SCALE_TO_MM = {
     "mm": 1.0,
     "cm": 10.0,
@@ -990,6 +993,25 @@ def signed_distances(
     prefer_exact_surface: bool = False,
     exact_surface_vertex_limit: int | None = DEFAULT_EXACT_SURFACE_VERTEX_LIMIT,
 ) -> tuple[np.ndarray, dict[str, Any]]:
+    if os.environ.get("BIGCOLOR_PREP_SAFE_NUMPY_NN") == "1":
+        sample_limit = int(os.environ.get("BIGCOLOR_PREP_SAFE_VERTEX_SAMPLE_LIMIT", str(DEFAULT_SAFE_VERTEX_SAMPLE_LIMIT)))
+        chunk_size = int(os.environ.get("BIGCOLOR_PREP_SAFE_VERTEX_CHUNK_SIZE", str(DEFAULT_SAFE_VERTEX_CHUNK_SIZE)))
+        return _safe_signed_vertex_distances_numpy(preop, waxup, sample_limit=sample_limit, chunk_size=chunk_size), {
+            "method": "nearest_vertex_normal_safe_numpy",
+            "fallback": True,
+            "reason": "production_safe_numpy_nn_enabled",
+            "vertex_count": {
+                "preop": int(len(preop.vertices)),
+                "waxup": int(len(waxup.vertices)),
+                "sample_limit": int(sample_limit),
+                "chunk_size": int(chunk_size),
+            },
+            "notes": [
+                "Ruta de produccion por bloques para evitar caidas del proceso en Render.",
+                "Aproximacion tecnica para demo/QA; no sustituye distancia exacta ni validacion clinica.",
+            ],
+        }
+
     if not prefer_exact_surface:
         return _fast_signed_vertex_distances(preop, waxup), {
             "method": "nearest_vertex_normal_fast",
@@ -1210,6 +1232,40 @@ def _fast_signed_vertex_distances(preop: trimesh.Trimesh, waxup: trimesh.Trimesh
     sign = np.sign(np.einsum("ij,ij->i", vectors, normals))
     sign[sign == 0] = 1
     return np.asarray(unsigned * sign, dtype=float)
+
+
+def _safe_signed_vertex_distances_numpy(
+    preop: trimesh.Trimesh,
+    waxup: trimesh.Trimesh,
+    sample_limit: int = DEFAULT_SAFE_VERTEX_SAMPLE_LIMIT,
+    chunk_size: int = DEFAULT_SAFE_VERTEX_CHUNK_SIZE,
+) -> np.ndarray:
+    preop_vertices = np.asarray(preop.vertices, dtype=float)
+    preop_normals = np.asarray(preop.vertex_normals, dtype=float)
+    waxup_vertices = np.asarray(waxup.vertices, dtype=float)
+    if len(preop_vertices) == 0 or len(waxup_vertices) == 0:
+        return np.asarray([], dtype=float)
+
+    if sample_limit > 0 and len(preop_vertices) > sample_limit:
+        sample_idx = np.linspace(0, len(preop_vertices) - 1, sample_limit, dtype=int)
+        preop_vertices = preop_vertices[sample_idx]
+        preop_normals = preop_normals[sample_idx]
+
+    chunk_size = max(64, int(chunk_size))
+    signed = np.empty(len(waxup_vertices), dtype=float)
+    for start in range(0, len(waxup_vertices), chunk_size):
+        end = min(start + chunk_size, len(waxup_vertices))
+        chunk = waxup_vertices[start:end]
+        delta = chunk[:, None, :] - preop_vertices[None, :, :]
+        dist2 = np.einsum("ijk,ijk->ij", delta, delta)
+        idx = np.argmin(dist2, axis=1)
+        unsigned = np.sqrt(dist2[np.arange(len(chunk)), idx])
+        vectors = chunk - preop_vertices[idx]
+        normals = preop_normals[idx]
+        sign = np.sign(np.einsum("ij,ij->i", vectors, normals))
+        sign[sign == 0] = 1
+        signed[start:end] = unsigned * sign
+    return signed
 
 
 def segment_teeth_and_zones(vertices: np.ndarray, arch: str) -> tuple[np.ndarray, np.ndarray]:

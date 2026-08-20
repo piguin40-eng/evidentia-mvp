@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import uuid
 import csv
+import os
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -266,6 +267,9 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
                 measurement_method = "exact_surface"
             if measurement_method not in {"fast_vertex", "exact_surface", "normal_ray"}:
                 raise MultipartError("measurement_method must be fast_vertex, exact_surface or normal_ray")
+            requested_measurement_method = measurement_method
+            if os.environ.get("BIGCOLOR_PREP_ENV") == "production" and os.environ.get("BIGCOLOR_PREP_ALLOW_HEAVY_METHODS") != "1":
+                measurement_method = "fast_vertex"
             ray_sample_count = int(_field_text(fields, "ray_sample_count", str(DEFAULT_RAY_SAMPLE_COUNT)))
             if ray_sample_count < 0:
                 raise MultipartError("ray_sample_count must be >= 0")
@@ -311,6 +315,12 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
                     "analysis": _analysis_for_response(analysis),
                     "table": _records_from_table(table),
                     "rowCount": int(len(table)),
+                    "server": {
+                        "productionMode": os.environ.get("BIGCOLOR_PREP_ENV") == "production",
+                        "requestedMeasurementMethod": requested_measurement_method,
+                        "executedMeasurementMethod": measurement_method,
+                        "heavyMethodsAllowed": os.environ.get("BIGCOLOR_PREP_ALLOW_HEAVY_METHODS") == "1",
+                    },
                 }
             )
         except Exception as exc:

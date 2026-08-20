@@ -1123,11 +1123,12 @@ function updateAnalyzeAvailability(){
 analyzeBtn.addEventListener("click", async () => {
   try{
     if(!preopMesh || !waxupMesh) return;
-    setStatus("Calculando heatmap interactivo y metricas...");
+    setStatus(metricMode.value === "engine" ? "Calculando metricas con motor Python..." : "Calculando heatmap interactivo y metricas...");
     await new Promise(requestAnimationFrame);
-    analyzeDistances();
     if(metricMode.value === "engine"){
       await runEngineAnalysis();
+    }else{
+      analyzeDistances();
     }
   }catch(err){
     console.error(err);
@@ -1223,7 +1224,7 @@ function applyEngineResults(analysis, rows){
   exportCsvBtn.disabled = false;
   exportJsonBtn.disabled = false;
   setStatus(
-    "Metricas del motor Python aplicadas. El mapa de color representa espesor continuo; la decision PREP esta en la tabla. " +
+    "Metricas del motor Python aplicadas. La decision PREP esta en la tabla; usa Navegador rapido si quieres colorear el visor localmente. " +
     "Puerta QA: " + readableRuleMeta(qaGate.status || "sin_qa_gate") + ". " +
     "Confianza de registro: " + (reg.confidence || "-") + ". " +
     "Unidad STL: " + unitSummaryLabel(unit) + ". " +
