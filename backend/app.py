@@ -176,8 +176,8 @@ def create_app(
         validate_identity_key(identity_encryption_key)
     if bool(app_auth_username) != bool(app_auth_password):
         raise ValueError("Usuario y contraseña de aplicación deben configurarse juntos")
-    if app_auth_password is not None and len(app_auth_password) < 16:
-        raise ValueError("La contraseña de aplicación debe tener al menos 16 caracteres")
+    if app_auth_password is not None and len(app_auth_password) < 14:
+        raise ValueError("La contraseña de aplicación debe tener al menos 14 caracteres")
     normalized_origins: set[str] = set()
     for origin in allowed_origins or ():
         parsed_origin = urlsplit(origin.strip())

@@ -15,6 +15,21 @@ TRAIN_RUN = ROOT / 'deploy_assets'
 KNOWLEDGE_DB = TRAIN_RUN / 'knowledge.db'
 
 
+def test_application_accepts_fourteen_character_review_password(tmp_path):
+    app = create_app(
+        runtime_dir=tmp_path / 'runtime',
+        demo_mesh=TRAIN_RUN / 'synthetic_dental_arch.stl',
+        model_path=TRAIN_RUN / 'bootstrap_model.joblib',
+        benchmark_path=TRAIN_RUN / 'model_benchmark.json',
+        manifest_path=TRAIN_RUN / 'seed_manifest.json',
+        knowledge_db=KNOWLEDGE_DB,
+        app_auth_username='Miguel',
+        app_auth_password='A' * 14,
+    )
+
+    assert app is not None
+
+
 def test_public_contract_never_exposes_hashes_or_reviewer_identity(tmp_path):
     knowledge_db = tmp_path / 'knowledge.db'
     with sqlite3.connect(knowledge_db) as db:
