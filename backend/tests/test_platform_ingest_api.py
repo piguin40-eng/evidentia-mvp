@@ -162,6 +162,160 @@ def test_platform_mesh_ingest_is_authenticated_pseudonymized_and_idempotent(tmp_
     assert 'CLINICA-BILBAO-01' not in private_vault
 
 
+def test_render_queue_stages_and_promotes_next_mesh_without_local_script(tmp_path: Path) -> None:
+    app = build_app(tmp_path)
+    first_request = {
+        'headers': {'Authorization': 'Bearer test-secret-token'},
+        'data': {
+            'platform': 'generic', 'connector_id': 'render-intake',
+            'source_event_id': 'render-event-1', 'patient_name': 'Seed One',
+            'clinic_reference': 'VALIDATED-SEED', 'order_reference': 'SEED-1',
+        },
+        'files': {'mesh': ('first.stl', TETRAHEDRON, 'model/stl')},
+    }
+    second_mesh = TETRAHEDRON.replace(b'vertex 1 0 0', b'vertex 2 0 0')
+    second_request = {
+        'headers': {'Authorization': 'Bearer test-secret-token'},
+        'data': {
+            'platform': 'generic', 'connector_id': 'render-intake',
+            'source_event_id': 'render-event-2', 'patient_name': 'Seed Two',
+            'clinic_reference': 'VALIDATED-SEED', 'order_reference': 'SEED-2',
+        },
+        'files': {'mesh': ('second.stl', second_mesh, 'model/stl')},
+    }
+
+    with TestClient(app) as client:
+        first = client.post('/api/platform-intake/mesh', **first_request)
+        second = client.post('/api/platform-intake/mesh', **second_request)
+        before = client.get('/api/review-queue')
+        state = json.loads((tmp_path / 'state.json').read_text(encoding='utf-8'))
+        state['prepared'][0]['review_status'] = 'COMPLETED'
+        (tmp_path / 'state.json').write_text(json.dumps(state), encoding='utf-8')
+        advanced = client.post('/api/review-queue/next')
+        after = client.get('/api/review-queue')
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert second.json()['status'] == 'STAGED_PENDING'
+    assert [item['case_code'] for item in before.json()['cases']] == [first.json()['case']['case_code']]
+    assert advanced.status_code == 201
+    assert advanced.json()['case']['case_code'] == second.json()['case']['case_code']
+    assert after.json()['cases'][-1]['case_code'] == second.json()['case']['case_code']
+
+    persisted = json.loads((tmp_path / 'state.json').read_text(encoding='utf-8'))
+    assert [item['queue_visibility'] for item in persisted['prepared']] == ['ACTIVE', 'ACTIVE']
+    with TestClient(build_app(tmp_path)) as restarted_client:
+        restarted = restarted_client.get('/api/review-queue')
+    assert restarted.json()['cases'][-1]['case_code'] == second.json()['case']['case_code']
+
+
+def test_new_ingest_stays_pending_while_an_earlier_pending_mesh_exists(tmp_path: Path) -> None:
+    app = build_app(tmp_path)
+
+    def ingest(client: TestClient, event_id: str, mesh: bytes):
+        return client.post(
+            '/api/platform-intake/mesh',
+            headers={'Authorization': 'Bearer test-secret-token'},
+            data={
+                'platform': 'generic', 'connector_id': 'render-intake',
+                'source_event_id': event_id, 'patient_name': event_id,
+                'clinic_reference': 'VALIDATED-SEED', 'order_reference': event_id,
+            },
+            files={'mesh': (f'{event_id}.stl', mesh, 'model/stl')},
+        )
+
+    with TestClient(app) as client:
+        first = ingest(client, 'ordered-1', TETRAHEDRON)
+        second = ingest(client, 'ordered-2', TETRAHEDRON.replace(b'vertex 1 0 0', b'vertex 2 0 0'))
+        state = json.loads((tmp_path / 'state.json').read_text(encoding='utf-8'))
+        state['prepared'][0]['review_status'] = 'COMPLETED'
+        (tmp_path / 'state.json').write_text(json.dumps(state), encoding='utf-8')
+        third = ingest(client, 'ordered-3', TETRAHEDRON.replace(b'vertex 0 1 0', b'vertex 0 2 0'))
+        visible = client.get('/api/review-queue')
+
+    assert first.json()['status'] == 'ENQUEUED'
+    assert second.json()['status'] == 'STAGED_PENDING'
+    assert third.json()['status'] == 'STAGED_PENDING'
+    assert [item['case_code'] for item in visible.json()['cases']] == [first.json()['case']['case_code']]
+
+
+def test_ingest_after_completion_waits_for_explicit_next_action(tmp_path: Path) -> None:
+    app = build_app(tmp_path)
+
+    def ingest(client: TestClient, event_id: str, mesh: bytes):
+        return client.post(
+            '/api/platform-intake/mesh',
+            headers={'Authorization': 'Bearer test-secret-token'},
+            data={
+                'platform': 'generic', 'connector_id': 'render-intake',
+                'source_event_id': event_id, 'patient_name': event_id,
+                'clinic_reference': 'VALIDATED-SEED', 'order_reference': event_id,
+            },
+            files={'mesh': (f'{event_id}.stl', mesh, 'model/stl')},
+        )
+
+    with TestClient(app) as client:
+        first = ingest(client, 'completed-first', TETRAHEDRON)
+        state = json.loads((tmp_path / 'state.json').read_text(encoding='utf-8'))
+        state['prepared'][0]['review_status'] = 'COMPLETED'
+        (tmp_path / 'state.json').write_text(json.dumps(state), encoding='utf-8')
+        second = ingest(client, 'arrived-after-completion', TETRAHEDRON.replace(b'vertex 1 0 0', b'vertex 2 0 0'))
+        before = client.get('/api/review-queue')
+        advanced = client.post('/api/review-queue/next')
+
+    assert first.json()['status'] == 'ENQUEUED'
+    assert second.json()['status'] == 'STAGED_PENDING'
+    assert [item['case_code'] for item in before.json()['cases']] == [first.json()['case']['case_code']]
+    assert advanced.status_code == 201
+    assert advanced.json()['case']['case_code'] == second.json()['case']['case_code']
+
+
+def test_queue_promotion_repairs_history_first_partial_write_on_retry(tmp_path: Path) -> None:
+    armed = False
+    failed_once = False
+
+    def fail_state_once(path):
+        nonlocal failed_once
+        if armed and Path(path).name == 'state.json' and not failed_once:
+            failed_once = True
+            raise OSError('injected state failure after history promotion')
+
+    app = build_app(tmp_path, before_json_write=fail_state_once)
+
+    def ingest(client: TestClient, event_id: str, mesh: bytes):
+        return client.post(
+            '/api/platform-intake/mesh',
+            headers={'Authorization': 'Bearer test-secret-token'},
+            data={
+                'platform': 'generic', 'connector_id': 'render-intake',
+                'source_event_id': event_id, 'patient_name': event_id,
+                'clinic_reference': 'VALIDATED-SEED', 'order_reference': event_id,
+            },
+            files={'mesh': (f'{event_id}.stl', mesh, 'model/stl')},
+        )
+
+    with TestClient(app) as client:
+        first = ingest(client, 'promotion-recovery-1', TETRAHEDRON)
+        second = ingest(client, 'promotion-recovery-2', TETRAHEDRON.replace(b'vertex 1 0 0', b'vertex 2 0 0'))
+        for path in (tmp_path / 'state.json', tmp_path / 'history.json'):
+            payload = json.loads(path.read_text(encoding='utf-8'))
+            payload['prepared'][0]['review_status'] = 'COMPLETED'
+            path.write_text(json.dumps(payload), encoding='utf-8')
+        armed = True
+        failed = client.post('/api/review-queue/next')
+        repaired = client.post('/api/review-queue/next')
+
+    assert first.json()['status'] == 'ENQUEUED'
+    assert second.json()['status'] == 'STAGED_PENDING'
+    assert failed.status_code == 503
+    assert repaired.status_code == 201
+    state = json.loads((tmp_path / 'state.json').read_text(encoding='utf-8'))
+    history = json.loads((tmp_path / 'history.json').read_text(encoding='utf-8'))
+    assert state['prepared'][1]['queue_visibility'] == 'ACTIVE'
+    assert history['prepared'][1]['queue_visibility'] == 'ACTIVE'
+    assert state['prepared'][1]['promoted_at'] == history['prepared'][1]['promoted_at']
+
+
 def test_platform_ingest_fails_closed_without_configured_token(tmp_path: Path) -> None:
     app = create_app(
         runtime_dir=tmp_path / 'runtime',

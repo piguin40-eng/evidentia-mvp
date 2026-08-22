@@ -303,6 +303,43 @@ def create_app(
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             raise HTTPException(503, "Configuración de plataformas no disponible") from exc
 
+    def resolve_prepared_case(prepared: dict[str, Any]) -> dict[str, Any] | None:
+        if queue_outgoing_root is None:
+            return None
+        case_code = str(prepared.get("case_code", ""))
+        if re.fullmatch(r"AIQ-[A-Z0-9-]{4,64}", case_code) is None:
+            return None
+        case_dirs = sorted(
+            (path for path in queue_outgoing_root.glob(f"*_{case_code}") if path.is_dir()),
+            reverse=True,
+        )
+        mesh_path: Path | None = None
+        for case_dir in case_dirs:
+            candidates = sorted(
+                path for path in case_dir.iterdir()
+                if path.is_file() and path.suffix.casefold() in {".stl", ".ply"}
+            )
+            if candidates:
+                mesh_path = candidates[0].resolve()
+                break
+        if mesh_path is None or not mesh_path.is_relative_to(queue_outgoing_root):
+            return None
+        delivered_sha = _sha256_file(mesh_path)
+        expected_delivered_sha = str(prepared.get("delivered_stl_sha256", delivered_sha))
+        if delivered_sha != expected_delivered_sha:
+            raise HTTPException(409, f"Integridad de la malla no válida para {case_code}")
+        return {
+            "case_code": case_code,
+            "daily_slot": int(prepared.get("daily_slot", 0)),
+            "daily_total": int(prepared.get("daily_total", 0)),
+            "review_status": str(prepared.get("review_status", "UNKNOWN")),
+            "source_mesh_sha256": str(prepared.get("source_mesh_sha256", "")),
+            "mesh_format": mesh_path.suffix.casefold().lstrip("."),
+            "mesh_url": f"/api/review-queue/{case_code}/mesh",
+            "triangle_count": int(prepared.get("triangle_count", 0)),
+            "_mesh_path": mesh_path,
+        }
+
     def resolve_queue_cases() -> list[dict[str, Any]]:
         if queue_state_path is None or queue_outgoing_root is None or not queue_state_path.exists():
             return []
@@ -312,39 +349,11 @@ def create_app(
             raise HTTPException(503, "La cola diaria no está disponible") from exc
         cases: list[dict[str, Any]] = []
         for prepared in state.get("prepared", []):
-            case_code = str(prepared.get("case_code", ""))
-            if re.fullmatch(r"AIQ-[A-Z0-9-]{4,64}", case_code) is None:
+            if str(prepared.get("queue_visibility", "ACTIVE")) == "PENDING":
                 continue
-            case_dirs = sorted(
-                (path for path in queue_outgoing_root.glob(f"*_{case_code}") if path.is_dir()),
-                reverse=True,
-            )
-            mesh_path: Path | None = None
-            for case_dir in case_dirs:
-                candidates = sorted(
-                    path for path in case_dir.iterdir()
-                    if path.is_file() and path.suffix.casefold() in {".stl", ".ply"}
-                )
-                if candidates:
-                    mesh_path = candidates[0].resolve()
-                    break
-            if mesh_path is None or not mesh_path.is_relative_to(queue_outgoing_root):
-                continue
-            delivered_sha = _sha256_file(mesh_path)
-            expected_delivered_sha = str(prepared.get("delivered_stl_sha256", delivered_sha))
-            if delivered_sha != expected_delivered_sha:
-                raise HTTPException(409, f"Integridad de la malla no válida para {case_code}")
-            cases.append({
-                "case_code": case_code,
-                "daily_slot": int(prepared.get("daily_slot", 0)),
-                "daily_total": int(prepared.get("daily_total", 0)),
-                "review_status": str(prepared.get("review_status", "UNKNOWN")),
-                "source_mesh_sha256": str(prepared.get("source_mesh_sha256", "")),
-                "mesh_format": mesh_path.suffix.casefold().lstrip("."),
-                "mesh_url": f"/api/review-queue/{case_code}/mesh",
-                "triangle_count": int(prepared.get("triangle_count", 0)),
-                "_mesh_path": mesh_path,
-            })
+            case = resolve_prepared_case(prepared)
+            if case is not None:
+                cases.append(case)
         return cases
 
     def public_queue_case(case: dict[str, Any]) -> dict[str, Any]:
@@ -702,7 +711,7 @@ def create_app(
                     )
                     response.status_code = 200
                     fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-                    case = next((item for item in resolve_queue_cases() if item["case_code"] == case_code), None)
+                    case = resolve_prepared_case(existing_source)
                     if case is None:
                         raise HTTPException(409, {"code": "QUEUE_CASE_MISSING", "message": "El caso idempotente no está disponible"})
                     return {
@@ -774,6 +783,7 @@ def create_app(
                 else:
                     shutil.copyfile(temporary_path, destination)
                 delivered_sha = _sha256_file(destination)
+                queue_visibility = "PENDING" if prepared else "ACTIVE"
                 record = {
                     "schema_version": 2,
                     "date": received_at[:10],
@@ -785,6 +795,7 @@ def create_app(
                     "delivered_stl_sha256": delivered_sha,
                     "triangle_count": int(features.get("faces", 0)),
                     "review_status": "AWAITING_HUMAN_REVIEW",
+                    "queue_visibility": queue_visibility,
                     "origin_platform": platform_id,
                     "connector_id": connector_id,
                     "source_event_id_commitment": source_event_sha,
@@ -834,13 +845,54 @@ def create_app(
                 _append_jsonl_locked(runtime / "platform_intake.jsonl", intake_event, unique_key="source_sha256")
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
-            case = next(item for item in resolve_queue_cases() if item["case_code"] == case_code)
+            case = resolve_prepared_case(record)
+            if case is None:
+                raise HTTPException(503, {"code": "QUEUE_CASE_MISSING", "message": "La malla preparada no está disponible"})
             return {
-                "status": "ENQUEUED",
+                "status": "STAGED_PENDING" if record.get("queue_visibility") == "PENDING" else "ENQUEUED",
                 "case": public_queue_case(case),
             }
         finally:
             temporary_path.unlink(missing_ok=True)
+
+    def promote_next_pending_case() -> None:
+        if queue_state_path is None or not queue_state_path.exists():
+            raise RuntimeError("QUEUE_STATE_UNAVAILABLE")
+        with workflow_lock_path.open("a+", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                state = json.loads(queue_state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError("QUEUE_STATE_UNAVAILABLE") from exc
+            pending = next(
+                (item for item in state.get("prepared", []) if item.get("queue_visibility") == "PENDING"),
+                None,
+            )
+            if pending is None:
+                raise RuntimeError("NO_PENDING_MESH")
+            pending_case_code = str(pending.get("case_code", ""))
+            promoted_at = _utc_now()
+            if queue_history_path is not None:
+                try:
+                    history = json.loads(queue_history_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    raise RuntimeError("QUEUE_HISTORY_UNAVAILABLE") from exc
+                history_pending = next(
+                    (
+                        item for item in history.get("prepared", [])
+                        if str(item.get("case_code", "")) == pending_case_code
+                    ),
+                    None,
+                )
+                if history_pending is None:
+                    raise RuntimeError("QUEUE_HISTORY_CASE_MISSING")
+                history_pending["queue_visibility"] = "ACTIVE"
+                history_pending["promoted_at"] = promoted_at
+                atomic_json_write(queue_history_path, history)
+            pending["queue_visibility"] = "ACTIVE"
+            pending["promoted_at"] = promoted_at
+            atomic_json_write(queue_state_path, state)
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     @app.get("/api/platform-connectors/status")
     def platform_connectors_status():
@@ -879,11 +931,10 @@ def create_app(
                     "code": "CURRENT_REVIEW_NOT_COMPLETED",
                     "message": "Guarda primero la revisión humana de la malla actual",
                 })
-            if daily_advance_callback is None:
-                raise HTTPException(503, {"code": "QUEUE_ADVANCE_NOT_CONFIGURED", "message": "El avance de cola no está configurado"})
+            advance_callback = daily_advance_callback or promote_next_pending_case
             current_case_code = str(current["case_code"])
             try:
-                daily_advance_callback()
+                advance_callback()
             except Exception as exc:
                 raise HTTPException(503, {"code": "QUEUE_ADVANCE_FAILED", "message": "No se pudo preparar la siguiente malla"}) from exc
             updated_cases = resolve_queue_cases()
