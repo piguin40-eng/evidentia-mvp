@@ -148,10 +148,11 @@ export function ReviewWorkspace({ selectedMeshFile, queueCase, onQueueAdvanced, 
     setError('')
   }
 
-  const analyze = async () => {
-    if (!functionalClass) { setError('Selecciona primero la función real de la malla'); return }
+  const analyze = useCallback(async (functionOverride?: string) => {
+    const selectedFunction = functionOverride ?? functionalClass
+    if (!selectedFunction) { setError('Selecciona primero la función real de la malla'); return }
     const generation = ++requestGeneration.current
-    const requestedFunction = functionalClass
+    const requestedFunction = selectedFunction
     const requestedFile = selectedMeshFile
     const requestedCase = queueCase
     setLoading(true); setError(''); setMessage(''); setAssessment(null); setVerdict('')
@@ -187,7 +188,15 @@ export function ReviewWorkspace({ selectedMeshFile, queueCase, onQueueAdvanced, 
     } finally {
       if (generation === requestGeneration.current) setLoading(false)
     }
-  }
+  }, [functionalClass, loadLatestReview, question, queueCase, selectedMeshFile])
+
+  const lastAutoAnalyzedMesh = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selectedMeshFile || lastAutoAnalyzedMesh.current === effectiveMeshKey) return
+    lastAutoAnalyzedMesh.current = effectiveMeshKey
+    setFunctionalClass('no_evaluable')
+    void analyze('no_evaluable')
+  }, [analyze, effectiveMeshKey, selectedMeshFile])
 
   const saveReview = async () => {
     if (!assessment) { setError('Ejecuta primero el análisis del agente'); return }
@@ -291,7 +300,7 @@ export function ReviewWorkspace({ selectedMeshFile, queueCase, onQueueAdvanced, 
         <option value="complementaria">Complementaria</option><option value="modelo_trabajo">Modelo de trabajo</option><option value="no_evaluable">No evaluable</option>
       </select></label>
       <label>Consulta RAG<textarea value={question} onChange={event => changeQuestion(event.target.value)} disabled={loading} /></label>
-      <button className="save-review" onClick={analyze} disabled={loading || !functionalClass} title={!functionalClass ? 'Selecciona primero la función real de la malla' : undefined}>
+      <button className="save-review" onClick={() => void analyze()} disabled={loading || !functionalClass} title={!functionalClass ? 'Selecciona primero la función real de la malla' : undefined}>
         {loading ? <LoaderCircle className="spin" size={16}/> : <BrainCircuit size={16}/>} Analizar con agente
       </button>
       {system && <div className="training-line"><Database size={15}/><span>RAG conectado · {system.rag.documents} documentos · {system.rag.chunks.toLocaleString('es-ES')} fragmentos</span></div>}

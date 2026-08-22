@@ -38,6 +38,82 @@ const rectification = {
 describe('ReviewWorkspace', () => {
   afterEach(() => vi.restoreAllMocks())
 
+  it('automatically analyzes each uploaded mesh with a provisional non-clinical function', async () => {
+    const uploadedAssessment = { ...assessment, case_code: 'AIQ-UPLOADED-001' }
+    const uploadedMesh = new File(['solid local\nendsolid local'], 'new-mesh.stl', { type: 'model/stl' })
+    const secondMesh = new File(['ply\nend_header'], 'second-mesh.ply', { type: 'application/octet-stream' })
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/status')) return jsonResponse({ status: 'ok', rag: { documents: 263, chunks: 12528 } })
+      if (url.includes('/api/training/status')) return jsonResponse({ meshes: 26, case_groups: 18, balanced_accuracy: 0.576923, human_reviews_received: 0, revalidations: 0, new_unique_training_samples: 0, next_candidate_gate: { ready: false, minimum_new_unique_samples: 6, reason: 'Faltan muestras' }, promotion: 'NO_PROMOTION' })
+      if (url.includes('/api/reviews/latest')) return jsonResponse({}, 404)
+      if (url.includes('/api/agent/analyze-upload')) return jsonResponse(uploadedAssessment)
+      throw new Error(`URL inesperada ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender } = render(<ReviewWorkspace selectedMeshFile={uploadedMesh} meshRevisionKey="upload:1" />)
+
+    expect(await screen.findByRole('heading', { name: 'CORRECTA' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /función real/i })).toHaveValue('no_evaluable')
+    const analyzeCall = fetchMock.mock.calls.find(call => String(call[0]).includes('/api/agent/analyze-upload'))
+    expect(analyzeCall).toBeTruthy()
+    const body = analyzeCall?.[1]?.body
+    expect(body).toBeInstanceOf(FormData)
+    expect((body as FormData).get('file')).toBe(uploadedMesh)
+    expect((body as FormData).get('functional_class')).toBe('no_evaluable')
+
+    rerender(<ReviewWorkspace selectedMeshFile={secondMesh} meshRevisionKey="upload:2" />)
+    await waitFor(() => {
+      const analyzeCalls = fetchMock.mock.calls.filter(call => String(call[0]).includes('/api/agent/analyze-upload'))
+      expect(analyzeCalls).toHaveLength(2)
+      const secondBody = analyzeCalls[1][1]?.body as FormData
+      expect(secondBody.get('file')).toBe(secondMesh)
+      expect(secondBody.get('functional_class')).toBe('no_evaluable')
+    })
+  })
+
+  it('discards a late uploaded-mesh analysis after a newer mesh is selected', async () => {
+    const firstMesh = new File(['solid first\nendsolid first'], 'first.stl', { type: 'model/stl' })
+    const secondMesh = new File(['ply\nend_header'], 'second.ply', { type: 'application/octet-stream' })
+    let resolveFirst!: (response: Response) => void
+    const pendingFirst = new Promise<Response>(resolve => { resolveFirst = resolve })
+    const secondAssessment = {
+      ...assessment,
+      assessment_id: 'ASM-SECOND',
+      case_code: 'AIQ-SECOND',
+      agent_output: { ...assessment.agent_output, verdict: 'INCORRECTA' as const, probability_incorrect: 0.8, probability_correct: 0.2 },
+      technical_features: { ...assessment.technical_features, faces: 222 },
+    }
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/status')) return jsonResponse({ status: 'ok', rag: { documents: 1, chunks: 1 } })
+      if (url.includes('/api/training/status')) return jsonResponse({ meshes: 0, case_groups: 0, balanced_accuracy: 0, human_reviews_received: 0, revalidations: 0, new_unique_training_samples: 0, next_candidate_gate: { ready: false, minimum_new_unique_samples: 6, reason: 'Faltan muestras' }, promotion: 'NO_PROMOTION' })
+      if (url.includes('/api/reviews/latest')) return jsonResponse({}, 404)
+      if (url.includes('/api/agent/analyze-upload')) {
+        const body = init?.body
+        if (!(body instanceof FormData)) throw new Error('El análisis no recibió FormData')
+        const file = body.get('file')
+        return file === firstMesh ? pendingFirst : jsonResponse(secondAssessment)
+      }
+      throw new Error(`URL inesperada ${url}`)
+    }))
+
+    const { rerender } = render(<ReviewWorkspace selectedMeshFile={firstMesh} meshRevisionKey="upload:first" />)
+    rerender(<ReviewWorkspace selectedMeshFile={secondMesh} meshRevisionKey="upload:second" />)
+    expect(await screen.findByRole('heading', { name: 'INCORRECTA' })).toBeInTheDocument()
+    expect(screen.getByText(/222 caras/i)).toBeInTheDocument()
+
+    await act(async () => {
+      resolveFirst(await jsonResponse(assessment))
+      await pendingFirst
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('heading', { name: 'INCORRECTA' })).toBeInTheDocument()
+    expect(screen.getByText(/222 caras/i)).toBeInTheDocument()
+    expect(screen.queryByText(/209\.153 caras/i)).not.toBeInTheDocument()
+  })
+
   it('runs the supervised agent and shows model, technical and RAG evidence', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
