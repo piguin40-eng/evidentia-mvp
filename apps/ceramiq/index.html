@@ -16,6 +16,7 @@
         <button class="nav-item active" type="button" data-go="home" aria-label="Inicio"><span class="icon-home"></span><small>Inicio</small></button>
         <button class="nav-item" type="button" data-go="capture" aria-label="Captura"><span class="icon-scan"></span><small>Scan</small></button>
         <button class="nav-item" type="button" data-go="analysis" aria-label="Analisis"><span class="icon-lab"></span><small>Analisis</small></button>
+        <button class="nav-item" type="button" data-go="chat" aria-label="Chat tecnico"><span class="icon-chat"></span><small>Chat</small></button>
         <button class="nav-item" type="button" data-go="recipe" aria-label="Salida"><span class="icon-recipe"></span><small>Salida</small></button>
       </nav>
 
@@ -265,6 +266,15 @@
           <p id="analysisMeta">Sube fotos y pulsa analizar para generar trazabilidad.</p>
         </section>
 
+        <section class="assistant-entry-panel">
+          <div>
+            <p class="eyebrow">Chat tecnico</p>
+            <h3>Pregunta solo lo que necesitas.</h3>
+            <p>Material, cemento, receta, masas o coccion con respuesta directa y trazable.</p>
+          </div>
+          <button class="secondary-action" type="button" data-go="chat">Abrir chat</button>
+        </section>
+
         <section class="ceramiq-answer" id="ceramiqAnswer">
           <div>
             <p class="eyebrow">Lectura del caso</p>
@@ -274,6 +284,30 @@
         </section>
 
         <button class="primary-action" type="button" data-go="recipe">Ver respuesta</button>
+      </section>
+
+      <section class="screen chat-screen" data-screen="chat">
+        <header class="screen-header">
+          <button class="back-button" type="button" data-go="home" aria-label="Volver"></button>
+          <div><p class="eyebrow">Ceramic IQ Expert</p><h2>Chat ceramico</h2></div>
+        </header>
+
+        <section class="chat-panel" aria-label="Chat tecnico Ceramic IQ">
+          <div class="chat-quick-actions">
+            <button type="button" data-chat-prompt="Dame solo el material indicado para este caso.">Solo material</button>
+            <button type="button" data-chat-prompt="Dame solo el cemento y protocolo adhesivo general para este caso.">Solo cemento</button>
+            <button type="button" data-chat-prompt="Dame receta por tercios con cuatro masas por tercio.">Receta</button>
+          </div>
+          <div class="chat-messages" id="ceramicChatMessages" aria-live="polite">
+            <article class="chat-bubble assistant">Pregunta material, cemento, receta, masa, zirconia, disilicato o coccion. Si falta contexto, Ceramic IQ lo dira.</article>
+          </div>
+          <label class="chat-input">
+            <span>Pregunta tecnica</span>
+            <textarea id="ceramicChatQuestion" rows="4" placeholder="Ej: que material usarias para 21 con sustrato oscuro y poco espacio?"></textarea>
+          </label>
+          <p class="chat-status" id="ceramicChatStatus">Conecta con el RAG ceramico estable del servidor.</p>
+          <button class="primary-action" type="button" id="askCeramicExpert">Preguntar</button>
+        </section>
       </section>
 
       <section class="screen recipe-screen" data-screen="recipe">

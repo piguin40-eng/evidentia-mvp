@@ -21,6 +21,8 @@ KNOWLEDGE_ROOT = "/Users/piguin/.openclaw/workspace/ceramiq-mvp"
 ATLAS_RECORDS_ROOT = Path(KNOWLEDGE_ROOT) / "atlas_records"
 RAG_PYTHON = RAG_ROOT + "/.venv/bin/python"
 RAG_QUERY = RAG_ROOT + "/scripts/query_" + "yoli" + "to_rag.py"
+STABLE_RAG_ROOT = Path(os.environ.get("CERAMIQ_STABLE_RAG_ROOT", "/Users/piguin/.openclaw/workspace/yolito-ceram-stable-rag"))
+STABLE_RAG_QUERY = STABLE_RAG_ROOT / "scripts" / "query_power_rag.py"
 WHISPER_BIN = "/opt/homebrew/bin/whisper"
 FFMPEG_BIN = "/opt/homebrew/bin/ffmpeg"
 BASIC_AUTH_USER = os.environ.get("CERAMIQ_BASIC_AUTH_USER", "").strip()
@@ -204,8 +206,56 @@ def apply_case_modifiers(material, case_text):
     return material
 
 
-def query_clinical_rag(file_names):
-    return fallback_reviewed_rag("live Chroma query disabled for MVP latency; reviewed RAG knowledge used synchronously")
+def query_power_rag(query, trust="any", limit=5):
+    if not STABLE_RAG_QUERY.exists():
+        return {"status": "unavailable", "results": [], "error": "stable_rag_query_missing"}
+    try:
+        completed = subprocess.run(
+            [
+                "python3",
+                str(STABLE_RAG_QUERY),
+                "--trust",
+                trust,
+                "--limit",
+                str(limit),
+                query,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            env={**os.environ, "PATH": "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "unavailable", "results": [], "error": type(exc).__name__}
+    if completed.returncode != 0:
+        return {"status": "unavailable", "results": [], "error": completed.stderr[:240]}
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return {"status": "unavailable", "results": [], "error": "invalid_rag_json"}
+
+
+def query_clinical_rag(query_text):
+    query = query_text.strip() or "receta ceramica por tercios material cemento CIELAB Delta E calibracion"
+    result = query_power_rag(query, trust="any", limit=5)
+    if result.get("status") == "matched" and result.get("results"):
+        excerpts = []
+        for item in result["results"][:4]:
+            excerpts.append(
+                "Fuente: "
+                + item.get("citation", "sin cita")
+                + "\nConfianza: "
+                + item.get("trust", "unknown")
+                + "\n"
+                + item.get("excerpt", "")[:900]
+            )
+        return {
+            "status": "stable_ceramiq_rag",
+            "excerpt": public_text("\n\n---\n\n".join(excerpts)),
+            "results": result["results"][:4],
+        }
+    return fallback_reviewed_rag("stable ceramic RAG not available for this query; reviewed fallback used synchronously")
 
 
 def fallback_reviewed_rag(reason):
@@ -351,7 +401,47 @@ def has_polarized(file_names, photo_roles):
     return any(term in text for term in ["polarizada", "polarizado", "polar"])
 
 
-def analyze_photo_payloads(photo_payloads, photo_roles):
+FINAL_RESULT_TERMS = (
+    "resultado final",
+    "cementado final",
+    "caso terminado",
+    "trabajo terminado",
+    "finalizado",
+    "resultado del paciente",
+    "despues de cementar",
+    "después de cementar",
+)
+PENDING_FINAL_RESULT_TERMS = (
+    "resultado final pendiente",
+    "pendiente de resultado",
+    "esperando resultado",
+    "espera resultado",
+    "falta resultado",
+    "sin resultado final",
+    "no realizado",
+    "no terminado",
+    "no cementado",
+)
+
+
+def detect_case_phase(case_text):
+    text = case_text.lower()
+    if any(term in text for term in PENDING_FINAL_RESULT_TERMS):
+        return "reference_recipe_planning_by_thirds"
+    if any(term in text for term in FINAL_RESULT_TERMS):
+        return "final_result_delta_by_thirds"
+    return "reference_recipe_planning_by_thirds"
+
+
+def initial_third_diagnosis(name, lab):
+    if name == "Incisal":
+        return f"{name}: referencia inicial L* {lab['L']}, a* {lab['a']}, b* {lab['b']}. Planificar translucidez, halo, mamelones y control de valor; Delta E final pendiente."
+    if name == "Medio":
+        return f"{name}: referencia inicial L* {lab['L']}, a* {lab['a']}, b* {lab['b']}. Planificar cuerpo dentinario, croma y transicion; Delta E final pendiente."
+    return f"{name}: referencia inicial L* {lab['L']}, a* {lab['a']}, b* {lab['b']}. Planificar saturacion cervical, bloqueo de sustrato y margen; Delta E final pendiente."
+
+
+def analyze_photo_payloads(photo_payloads, photo_roles, case_phase):
     if not photo_payloads:
         return {
             "calibration_status": "no_photos_received",
@@ -374,16 +464,21 @@ def analyze_photo_payloads(photo_payloads, photo_roles):
         deltas = []
         for index, name in enumerate(names):
             target = rgb_to_lab(average_rgb_for_third(target_path, index))
-            current = rgb_to_lab(average_rgb_for_third(current_path, index))
-            de = delta_e(target, current)
-            deltas.append(de)
-            diagnosis = diagnose_third(name, target, current, de)
+            if case_phase == "final_result_delta_by_thirds" and len(image_paths) >= 2:
+                current = rgb_to_lab(average_rgb_for_third(current_path, index))
+                de = delta_e(target, current)
+                deltas.append(de)
+                diagnosis = diagnose_third(name, target, current, de)
+            else:
+                current = None
+                de = None
+                diagnosis = initial_third_diagnosis(name, target)
             thirds.append({"name": name, "target": target, "current": current, "delta_e": de, "diagnosis": diagnosis})
         return {
             "calibration_status": calibration_status_for(photo_payloads, photo_roles),
-            "delta_e": round(sum(deltas) / len(deltas), 1),
+            "delta_e": round(sum(deltas) / len(deltas), 1) if deltas else None,
             "thirds": thirds,
-            "analysis_mode": "pixel_lab_by_thirds",
+            "analysis_mode": case_phase,
         }
 
 
@@ -425,7 +520,7 @@ def recipe_for_case(thirds, case_text, material):
     recipe = []
     for third in thirds:
         target = third["target"]
-        current = third["current"]
+        current = third.get("current") or target
         d_l = current["L"] - target["L"]
         d_b = current["b"] - target["b"]
         d_a = current["a"] - target["a"]
@@ -502,13 +597,13 @@ def build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_
         {
             "id": "comparison_ready",
             "label": "Comparativa objetivo/actual",
-            "ok": len(file_names) >= 2,
-            "detail": "La primera foto se toma como objetivo y la ultima como actual" if len(file_names) >= 2 else "Sube minimo objetivo y prueba para comparar Delta E real",
+            "ok": image_analysis["analysis_mode"] == "final_result_delta_by_thirds" and len(file_names) >= 2,
+            "detail": "Resultado final detectado: se compara referencia inicial contra final" if image_analysis["analysis_mode"] == "final_result_delta_by_thirds" and len(file_names) >= 2 else "Fase inicial: Delta E final queda pendiente hasta recibir resultado final",
         },
         {
             "id": "pixel_lab",
             "label": "CIELAB calculado",
-            "ok": image_analysis["analysis_mode"] == "pixel_lab_by_thirds",
+            "ok": image_analysis["analysis_mode"] in ("reference_recipe_planning_by_thirds", "final_result_delta_by_thirds"),
             "detail": image_analysis["analysis_mode"],
         },
         {
@@ -554,6 +649,84 @@ def build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_
         "score": score,
         "checks": checks,
         "mass_registry": mass_validation,
+    }
+
+
+def classify_chat_intent(question):
+    text = question.lower()
+    if any(term in text for term in ["cemento", "cementar", "adhesivo", "bond", "mdp", "silano", "grabado"]):
+        return "cement"
+    if any(term in text for term in ["material", "bloque", "zirconia", "disilicato", "feldespat", "metal", "estructura"]):
+        return "material"
+    if any(term in text for term in ["receta", "estratifica", "estratificacion", "masa", "tercio", "incisal", "cervical"]):
+        return "recipe"
+    if any(term in text for term in ["coccion", "cocción", "horno", "temperatura", "vacío", "vacio", "glaze"]):
+        return "firing"
+    return "ceramic_chat"
+
+
+def clean_excerpt_lines(rag_evidence, max_lines=5):
+    excerpt = rag_evidence.get("excerpt", "")
+    lines = []
+    for raw in excerpt.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("Fuente:") or line.startswith("Confianza:"):
+            continue
+        if line.startswith("- "):
+            line = line[2:]
+        if len(line) > 210:
+            line = line[:207].rstrip() + "..."
+        if line and line not in lines:
+            lines.append(line)
+        if len(lines) >= max_lines:
+            break
+    return lines
+
+
+def public_rag_results(results, limit=3):
+    public_results = []
+    for item in (results or [])[:limit]:
+        public_results.append({
+            "citation": item.get("citation", "sin cita"),
+            "trust": item.get("trust", "unknown"),
+            "source_kind": str(item.get("source_kind", "ceramic_knowledge")).replace("yolito", "ceramiq"),
+            "excerpt": public_text(item.get("excerpt", "")[:700]),
+        })
+    return public_results
+
+
+def build_chat_answer(question, case_context="", material_payload=None):
+    intent = classify_chat_intent(question)
+    selected = material_config(material_payload or {"id": "ips_emax_ceram"})
+    query = " ".join(part for part in [question, case_context, selected["label"], "ceramica dental RAG experto"] if part).strip()
+    trust = "candidate" if intent in {"material", "recipe", "firing"} else "any"
+    rag_evidence = query_clinical_rag(query)
+    lines = clean_excerpt_lines(rag_evidence, max_lines=4)
+    source_line = "RAG ceramico estable" if rag_evidence.get("status") == "stable_ceramiq_rag" else "fallback reviewed"
+
+    if intent == "material":
+        lead = f"Material: {selected['label']} si es el sistema elegido; si la estructura real es zirconia, usar ceramica compatible con zirconia; si es metal, usar metal-ceramica compatible."
+    elif intent == "cement":
+        lead = "Cemento: depende de material restaurador y sustrato; confirmar IFU, acondicionamiento y si procede silano o MDP."
+    elif intent == "recipe":
+        lead = f"Receta: responderia por tercios dentro de {selected['label']}, con cuatro masas por tercio, porcentaje y funcion optica. Si faltan fotos calibradas, CIELAB/Delta E quedan estimados."
+    elif intent == "firing":
+        lead = "Coccion: solo como guia candidate. Los fabricantes recalcan que horno, sensor, bandeja, tamano de pieza y aspecto final mandan sobre la temperatura escrita."
+    else:
+        lead = "Respuesta ceramica: contesto solo a lo preguntado y uso el RAG como apoyo, separando candidate de reviewed."
+
+    evidence = "" if intent in {"material", "cement"} else " ".join(lines[:3])
+    answer = lead if not evidence else lead + " " + evidence
+    return {
+        "ok": True,
+        "engine": "Ceramic IQ Expert",
+        "intent": intent,
+        "answer": public_text(answer),
+        "rag_status": rag_evidence.get("status"),
+        "rag_source": source_line,
+        "rag_results": public_rag_results(rag_evidence.get("results", []), limit=3),
+        "material_system": selected["label"],
+        "safety": "El conocimiento candidate no se trata como validado sin revision tecnica.",
     }
 
 
@@ -733,6 +906,26 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
             return
         if not self.require_auth():
             return
+        if parsed.path == "/api/ceramiq/chat":
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            try:
+                payload_in = json.loads(raw or "{}")
+            except json.JSONDecodeError:
+                payload_in = {}
+            response = build_chat_answer(
+                str(payload_in.get("question") or ""),
+                str(payload_in.get("case_context") or ""),
+                payload_in.get("material_system") or {"id": "ips_emax_ceram", "custom_name": ""},
+            )
+            payload = json.dumps(response, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
         if parsed.path not in ("/api/ceramiq/analyze", "/api/ceramiq/index"):
             self.send_error(404, "Unknown endpoint")
             return
@@ -804,9 +997,10 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
             self.wfile.write(payload)
             return
 
-        rag_evidence = query_clinical_rag(file_names)
-        image_analysis = analyze_photo_payloads(photo_payloads, photo_roles)
         full_case_text = "\n".join([case_description, *audio_transcripts]).strip()
+        case_phase = detect_case_phase(full_case_text)
+        rag_evidence = query_clinical_rag(" ".join([full_case_text, json.dumps(material_payload, ensure_ascii=False)]))
+        image_analysis = analyze_photo_payloads(photo_payloads, photo_roles, case_phase)
         selected_material = material_config(material_payload)
         recipe = recipe_for_case(image_analysis["thirds"], full_case_text, material_payload) if image_analysis["thirds"] else []
         validation = build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_evidence, photo_roles, material_payload)
@@ -826,6 +1020,8 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
             "case_audio_transcript": "\n".join(audio_transcripts),
             "calibration_status": image_analysis["calibration_status"],
             "analysis_mode": image_analysis["analysis_mode"],
+            "case_phase": case_phase,
+            "final_result_status": "pending" if case_phase == "reference_recipe_planning_by_thirds" else "received",
             "delta_e": image_analysis["delta_e"],
             "thirds": image_analysis["thirds"],
             "recipe": recipe,

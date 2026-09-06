@@ -15,6 +15,10 @@ const recipeHero = document.querySelector(".recipe-hero");
 const validationList = document.getElementById("validationList");
 const analysisMeta = document.getElementById("analysisMeta");
 const ceramiqAnswer = document.getElementById("ceramiqAnswer");
+const ceramicChatQuestion = document.getElementById("ceramicChatQuestion");
+const askCeramicExpert = document.getElementById("askCeramicExpert");
+const ceramicChatMessages = document.getElementById("ceramicChatMessages");
+const ceramicChatStatus = document.getElementById("ceramicChatStatus");
 const startCamera = document.getElementById("startCamera");
 const takePhoto = document.getElementById("takePhoto");
 const cameraPreview = document.getElementById("cameraPreview");
@@ -275,6 +279,60 @@ function fmtLab(lab) {
   return "L* " + lab.L + " a* " + lab.a + " b* " + lab.b;
 }
 
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function appendChatBubble(kind, text) {
+  if (!ceramicChatMessages) return;
+  const article = document.createElement("article");
+  article.className = "chat-bubble " + kind;
+  article.textContent = text;
+  ceramicChatMessages.append(article);
+  ceramicChatMessages.scrollTop = ceramicChatMessages.scrollHeight;
+}
+
+async function askCeramicExpertQuestion(questionOverride) {
+  const question = (questionOverride || (ceramicChatQuestion ? ceramicChatQuestion.value : "") || "").trim();
+  if (!question) {
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Escribe una pregunta concreta: material, cemento, receta, masa o coccion.";
+    showScreen("chat");
+    return;
+  }
+  appendChatBubble("user", question);
+  if (ceramicChatQuestion && !questionOverride) ceramicChatQuestion.value = "";
+  if (askCeramicExpert) askCeramicExpert.disabled = true;
+  if (ceramicChatStatus) ceramicChatStatus.textContent = "Consultando Ceramic IQ Expert...";
+  try {
+    const response = await fetch("/api/ceramiq/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        case_context: caseDescription ? caseDescription.value.trim() : "",
+        material_system: selectedMaterialPayload(),
+      }),
+    });
+    if (!response.ok) throw new Error("Chat endpoint failed");
+    const result = await response.json();
+    appendChatBubble("assistant", result.answer || "No hay respuesta tecnica disponible.");
+    if (ceramicChatStatus) {
+      ceramicChatStatus.textContent = (result.engine || "Ceramic IQ Expert") + " · " + (result.rag_source || "RAG ceramico") + " · " + (result.intent || "consulta");
+    }
+  } catch (error) {
+    appendChatBubble("assistant", "No se pudo consultar el RAG ceramico ahora. Revisa conexion del servidor.");
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Consulta no completada.";
+  } finally {
+    if (askCeramicExpert) askCeramicExpert.disabled = false;
+  }
+}
+
 function renderClinicalResult(result) {
   if (deltaBadge) deltaBadge.textContent = result.delta_e === null ? "Delta E --" : "Delta E " + result.delta_e;
   if (analysisSummary) {
@@ -286,10 +344,13 @@ function renderClinicalResult(result) {
     thirdStack.innerHTML = "";
     result.thirds.forEach((third) => {
       const article = document.createElement("article");
+      const comparisonLine = third.delta_e === null || third.delta_e === undefined
+        ? "Resultado final pendiente"
+        : "Actual " + fmtLab(third.current) + " · Delta E " + third.delta_e;
       article.innerHTML =
-        "<div><strong>" + third.name + "</strong><span>Objetivo " + fmtLab(third.target) + "</span></div>" +
-        "<em>Actual " + fmtLab(third.current) + " · Delta E " + third.delta_e + "</em>" +
-        "<p>" + third.diagnosis + "</p>";
+        "<div><strong>" + escapeHtml(third.name) + "</strong><span>Referencia " + escapeHtml(fmtLab(third.target)) + "</span></div>" +
+        "<em>" + escapeHtml(comparisonLine) + "</em>" +
+        "<p>" + escapeHtml(third.diagnosis) + "</p>";
       thirdStack.append(article);
     });
   }
@@ -298,8 +359,16 @@ function renderClinicalResult(result) {
     const body = recipeHero.querySelector("p");
     const pill = recipeHero.querySelector(".pill");
     if (pill) pill.textContent = result.calibration_status === "estimated_from_uploaded_pixels" ? "Analisis pixel real" : "Estimacion limitada";
-    if (title) title.textContent = "Informe " + (result.material_system || "Ceramic IQ") + " desde fotos subidas";
-    if (body) body.textContent = result.warning;
+    if (title) {
+      title.textContent = result.case_phase === "final_result_delta_by_thirds"
+        ? "Evaluacion final " + (result.material_system || "Ceramic IQ")
+        : "Planificacion inicial " + (result.material_system || "Ceramic IQ");
+    }
+    if (body) {
+      body.textContent = result.case_phase === "final_result_delta_by_thirds"
+        ? result.warning
+        : "Receta y criterio tecnico listos. Delta E final queda pendiente hasta recibir el resultado terminado del caso.";
+    }
   }
   if (recipeStack && result.recipe) {
     recipeStack.innerHTML = "";
@@ -355,6 +424,11 @@ function renderValidation(result) {
 document.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.go)));
 if (runAnalysis) runAnalysis.addEventListener("click", sendToClinicalHarness);
 if (indexCase) indexCase.addEventListener("click", indexCurrentCase);
+if (askCeramicExpert) askCeramicExpert.addEventListener("click", () => askCeramicExpertQuestion());
+document.querySelectorAll("[data-chat-prompt]").forEach((button) => button.addEventListener("click", () => askCeramicExpertQuestion(button.dataset.chatPrompt)));
+if (ceramicChatQuestion) ceramicChatQuestion.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") askCeramicExpertQuestion();
+});
 shotButtons.forEach((button) => button.addEventListener("click", () => updateShot(Number(button.dataset.shot))));
 if (photoInput) photoInput.addEventListener("change", async () => {
   if (!photoInput.files.length) return;
