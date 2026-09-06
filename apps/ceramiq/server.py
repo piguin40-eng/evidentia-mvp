@@ -880,6 +880,8 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
                     "service": "ceramic-iq",
                     "engine": "Ceramic IQ",
                     "status": "operational",
+                    "version": "ceramiq-expert-chat-2026-09-06",
+                    "features": ["ceramiq_expert_chat", "planning_vs_final_delta_flow", "stable_ceramic_rag"],
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
