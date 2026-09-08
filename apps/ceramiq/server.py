@@ -8,6 +8,8 @@ import socket
 import subprocess
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +33,9 @@ BASIC_AUTH_ENABLED = bool(BASIC_AUTH_USER and BASIC_AUTH_PASSWORD)
 AUTH_MODE = os.environ.get("CERAMIQ_AUTH_MODE", "cookie").strip().lower()
 SESSION_COOKIE = "ceramiq_session"
 SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode("utf-8")).hexdigest() if BASIC_AUTH_ENABLED else ""
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_AGENT_MODEL = os.environ.get("CERAMIQ_AGENT_MODEL", "gpt-4.1-mini").strip()
+OPENAI_AGENT_ENABLED = os.environ.get("CERAMIQ_ENABLE_OPENAI_AGENT", "1").strip().lower() in {"1", "true", "yes"}
 
 
 MATERIALS = {
@@ -654,6 +659,8 @@ def build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_
 
 def classify_chat_intent(question):
     text = question.lower()
+    if any(term in text for term in ["opaco", "opaca", "opacidad", "bloquear", "bloqueo", "enmascarar", "tapar"]):
+        return "opacity"
     if any(term in text for term in ["cemento", "cementar", "adhesivo", "bond", "mdp", "silano", "grabado"]):
         return "cement"
     if any(term in text for term in ["material", "bloque", "zirconia", "disilicato", "feldespat", "metal", "estructura"]):
@@ -672,6 +679,11 @@ def clean_excerpt_lines(rag_evidence, max_lines=5):
         line = raw.strip()
         if not line or line.startswith("Fuente:") or line.startswith("Confianza:"):
             continue
+        lowered = line.lower()
+        if "rag not available" in lowered or "fallback used" in lowered or "reviewed knowledge fallback" in lowered:
+            continue
+        if line.startswith("#"):
+            continue
         if line.startswith("- "):
             line = line[2:]
         if len(line) > 210:
@@ -686,42 +698,144 @@ def clean_excerpt_lines(rag_evidence, max_lines=5):
 def public_rag_results(results, limit=3):
     public_results = []
     for item in (results or [])[:limit]:
+        excerpt = public_text(item.get("excerpt", "")[:700])
+        excerpt = " ".join(
+            line.strip().lstrip("#").strip()
+            for line in excerpt.splitlines()
+            if line.strip() and "rag not available" not in line.lower() and "fallback used" not in line.lower()
+        )
         public_results.append({
             "citation": item.get("citation", "sin cita"),
             "trust": item.get("trust", "unknown"),
-            "source_kind": str(item.get("source_kind", "ceramic_knowledge")).replace("yolito", "ceramiq"),
-            "excerpt": public_text(item.get("excerpt", "")[:700]),
+            "source_kind": public_text(str(item.get("source_kind", "ceramic_knowledge"))).replace(" ", "_").lower(),
+            "excerpt": excerpt,
         })
     return public_results
+
+
+def compact_rag_context(rag_evidence, limit=5):
+    lines = clean_excerpt_lines(rag_evidence, max_lines=limit)
+    if not lines:
+        return "Sin fragmentos RAG publicables para esta pregunta."
+    return "\n".join("- " + line for line in lines)
+
+
+def call_openai_ceramic_agent(question, case_context, selected, intent, rag_evidence):
+    if not OPENAI_AGENT_ENABLED or not OPENAI_API_KEY:
+        return ""
+    system = (
+        "Eres Ceramic IQ Expert, un agente tecnico de ceramica dental para laboratorio. "
+        "Responde en espanol, directo, util y con criterio de ceramista senior. "
+        "No menciones fallos internos, fallback, rutas locales ni nombres de agentes internos. "
+        "Si faltan fotos, tarjeta gris o polarizada, dilo como limitacion clinica, no como error tecnico. "
+        "Para recetas, separa por tercios y usa cuatro masas por tercio cuando proceda. "
+        "Para preguntas cortas, contesta primero la respuesta corta y despues el criterio practico. "
+        "No declares medicion CIELAB absoluta sin calibracion."
+    )
+    user = (
+        f"Pregunta: {question}\n"
+        f"Contexto del caso: {case_context or 'sin contexto adicional'}\n"
+        f"Sistema seleccionado: {selected['label']}\n"
+        f"Intencion clasificada: {intent}\n"
+        f"Contexto RAG publicable:\n{compact_rag_context(rag_evidence)}"
+    )
+    payload = json.dumps(
+        {
+            "model": OPENAI_AGENT_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.25,
+            "max_tokens": 520,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": "Bearer " + OPENAI_API_KEY,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=18) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+        return ""
+    try:
+        return public_text(data["choices"][0]["message"]["content"].strip())
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def expert_fallback_answer(intent, question, selected, rag_evidence):
+    text = question.lower()
+    material = selected["label"]
+    if intent == "opacity":
+        if material == "IPS e.max Ceram" or "emax" in text or "e.max" in text:
+            return (
+                "Respuesta corta: en IPS e.max Ceram, para opacidad y bloqueo no uses incisal, transpa ni opal como masa principal. "
+                "La familia util es Deep Dentin: aporta mas cuerpo, mas croma y mas capacidad de tapar que Dentin o las masas incisales. "
+                "Orden practico de opacidad: Deep Dentin > Dentin > Incisal/Transpa/Opal. "
+                "Si el problema es un munon muy oscuro o poco espesor, decide primero bloqueo, liner/coping y espesor disponible; una receta translucida no compensa un sustrato negro con 0.3 mm. "
+                "Sin foto con guia, gris y polarizada, esto queda como criterio estimado, no medicion absoluta."
+            )
+        return (
+            f"Respuesta corta: dentro de {material}, busca la masa de dentina profunda, opaque dentin o blocker del sistema; no una masa incisal/translucida. "
+            "La masa mas opaca depende de la tabla real del fabricante, asi que confirma IFU antes de protocolizarlo para curso."
+        )
+    if intent == "material":
+        return (
+            f"Material: si el sistema elegido es {material}, usalo solo si es compatible con la estructura real. "
+            "Zirconia necesita ceramica compatible con zirconia; metal necesita metal-ceramica; disilicato necesita su ceramica de recubrimiento compatible. "
+            "La decision clinica depende de sustrato, espesor, valor objetivo, translucidez deseada y riesgo de bloqueo."
+        )
+    if intent == "cement":
+        return (
+            "Cemento: no lo decidas por marca de ceramica aislada. Decide por material restaurador, sustrato y preparacion. "
+            "Disilicato/feldespatica suelen ir por protocolo adhesivo con grabado HF y silano segun IFU; zirconia exige otro protocolo, habitualmente arenado/control de limpieza y primer MDP si procede. "
+            "Si hay sustrato oscuro, el try-in y el valor del cemento importan mucho."
+        )
+    if intent == "recipe":
+        return (
+            f"Receta orientativa en {material}: Cervical: blocker/deep dentin 30%, dentin cromatica 25%, dentin base 25%, neutral/transpa 20%. "
+            "Medio: dentin base 38%, value/incisal 22%, dentin cromatica 18%, neutral 22%. "
+            "Incisal: opal 30%, incisal 24%, neutral/blue 24%, mamelon 22%. "
+            "Funcion: cervical controla saturacion y bloqueo, medio da cuerpo y valor, incisal da profundidad, halo y naturalidad. "
+            "Sin guia, tarjeta gris y polarizada, la receta es estimada y debe validarse en prueba."
+        )
+    if intent == "firing":
+        return (
+            f"Coccion: no cierres temperatura desde el chat. Para {material}, manda la IFU vigente, horno, bandeja, tamano de pieza y masa concreta. "
+            "El criterio practico es ajustar por aspecto final: superficie, brillo, contraccion y textura, pero la tabla del fabricante manda."
+        )
+    support = clean_excerpt_lines(rag_evidence, max_lines=2)
+    suffix = " Apoyo RAG: " + " ".join(support) if support else ""
+    return (
+        f"Respuesta Ceramic IQ: para {material}, necesito material real, estructura, espesor, sustrato y objetivo optico. "
+        "Si faltan fotos calibradas, separo recomendacion tecnica de medicion clinica absoluta."
+        + suffix
+    )
 
 
 def build_chat_answer(question, case_context="", material_payload=None):
     intent = classify_chat_intent(question)
     selected = material_config(material_payload or {"id": "ips_emax_ceram"})
     query = " ".join(part for part in [question, case_context, selected["label"], "ceramica dental RAG experto"] if part).strip()
-    trust = "candidate" if intent in {"material", "recipe", "firing"} else "any"
     rag_evidence = query_clinical_rag(query)
-    lines = clean_excerpt_lines(rag_evidence, max_lines=4)
-    source_line = "RAG ceramico estable" if rag_evidence.get("status") == "stable_ceramiq_rag" else "fallback reviewed"
-
-    if intent == "material":
-        lead = f"Material: {selected['label']} si es el sistema elegido; si la estructura real es zirconia, usar ceramica compatible con zirconia; si es metal, usar metal-ceramica compatible."
-    elif intent == "cement":
-        lead = "Cemento: depende de material restaurador y sustrato; confirmar IFU, acondicionamiento y si procede silano o MDP."
-    elif intent == "recipe":
-        lead = f"Receta: responderia por tercios dentro de {selected['label']}, con cuatro masas por tercio, porcentaje y funcion optica. Si faltan fotos calibradas, CIELAB/Delta E quedan estimados."
-    elif intent == "firing":
-        lead = "Coccion: solo como guia candidate. Los fabricantes recalcan que horno, sensor, bandeja, tamano de pieza y aspecto final mandan sobre la temperatura escrita."
-    else:
-        lead = "Respuesta ceramica: contesto solo a lo preguntado y uso el RAG como apoyo, separando candidate de reviewed."
-
-    evidence = "" if intent in {"material", "cement"} else " ".join(lines[:3])
-    answer = lead if not evidence else lead + " " + evidence
+    source_line = "RAG ceramico estable" if rag_evidence.get("status") == "stable_ceramiq_rag" else "conocimiento revisado local"
+    answer = call_openai_ceramic_agent(question, case_context, selected, intent, rag_evidence)
+    agent_mode = "openai_agent" if answer else "local_expert_fallback"
+    if not answer:
+        answer = expert_fallback_answer(intent, question, selected, rag_evidence)
     return {
         "ok": True,
         "engine": "Ceramic IQ Expert",
         "intent": intent,
         "answer": public_text(answer),
+        "agent_mode": agent_mode,
         "rag_status": rag_evidence.get("status"),
         "rag_source": source_line,
         "rag_results": public_rag_results(rag_evidence.get("results", []), limit=3),
