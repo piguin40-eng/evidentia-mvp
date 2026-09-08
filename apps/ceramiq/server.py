@@ -1196,7 +1196,7 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
                     "service": "ceramic-iq",
                     "engine": "Ceramic IQ",
                     "status": "operational",
-                    "version": "ceramiq-expert-chat-2026-09-08-voice",
+                    "version": "ceramiq-expert-chat-2026-09-08-intent-fix",
                     "features": ["ceramiq_expert_chat", "planning_vs_final_delta_flow", "stable_ceramic_rag", "voice_chat_input"],
                 },
                 ensure_ascii=False,
