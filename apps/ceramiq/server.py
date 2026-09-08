@@ -209,6 +209,18 @@ def apply_case_modifiers(material, case_text):
                 "case_modifier": "bleach_masses",
             }
         )
+    if material["label"] == "IPS e.max Ceram" and any(term in text for term in ["guia a1", "guía a1", "shade a1", "a1 visible"]):
+        material = material.copy()
+        material.update(
+            {
+                "cervical_body": "IPS e.max Ceram Deep Dentin A2",
+                "dentin": "IPS e.max Ceram Dentin A1",
+                "dentin_chroma": "IPS e.max Ceram Dentin A1",
+                "warm": "IPS e.max Ceram Dentin A2",
+                "yellow": "IPS e.max Ceram Dentin A2",
+                "case_modifier": "a1_guide",
+            }
+        )
     return material
 
 
