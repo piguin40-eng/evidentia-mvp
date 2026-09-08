@@ -306,7 +306,11 @@
             <textarea id="ceramicChatQuestion" rows="4" placeholder="Ej: que material usarias para 21 con sustrato oscuro y poco espacio?"></textarea>
           </label>
           <p class="chat-status" id="ceramicChatStatus">Conecta con el RAG ceramico estable del servidor.</p>
-          <button class="primary-action" type="button" id="askCeramicExpert">Preguntar</button>
+          <div class="chat-actions">
+            <button class="voice-button" type="button" id="recordChatVoice" aria-label="Preguntar por voz"><span class="mic-icon"></span><strong>Voz</strong></button>
+            <button class="secondary-action" type="button" id="toggleChatSpeech" aria-pressed="false">Escuchar</button>
+            <button class="primary-action" type="button" id="askCeramicExpert">Preguntar</button>
+          </div>
         </section>
       </section>
 

@@ -17,6 +17,8 @@ const analysisMeta = document.getElementById("analysisMeta");
 const ceramiqAnswer = document.getElementById("ceramiqAnswer");
 const ceramicChatQuestion = document.getElementById("ceramicChatQuestion");
 const askCeramicExpert = document.getElementById("askCeramicExpert");
+const recordChatVoice = document.getElementById("recordChatVoice");
+const toggleChatSpeech = document.getElementById("toggleChatSpeech");
 const ceramicChatMessages = document.getElementById("ceramicChatMessages");
 const ceramicChatStatus = document.getElementById("ceramicChatStatus");
 const startCamera = document.getElementById("startCamera");
@@ -42,6 +44,10 @@ let savedPhotos = [];
 let savedAudio = null;
 let recorder = null;
 let audioChunks = [];
+let chatRecorder = null;
+let chatAudioChunks = [];
+let chatSpeechEnabled = false;
+let chatRecognition = null;
 const DB_NAME = "ceramiq-case-v1";
 const STORE_NAME = "case-store";
 const CASE_TEXT_KEY = "ceramiq.caseDescription";
@@ -321,7 +327,12 @@ async function askCeramicExpertQuestion(questionOverride) {
     });
     if (!response.ok) throw new Error("Chat endpoint failed");
     const result = await response.json();
+    if (result.ok === false) {
+      appendChatBubble("assistant", result.error || "No se pudo consultar la pregunta.");
+      return;
+    }
     appendChatBubble("assistant", result.answer || "No hay respuesta tecnica disponible.");
+    speakChatAnswer(result.answer || "");
     if (ceramicChatStatus) {
       ceramicChatStatus.textContent = (result.engine || "Ceramic IQ Expert") + " · " + (result.rag_source || "RAG ceramico") + " · " + (result.intent || "consulta");
     }
@@ -331,6 +342,52 @@ async function askCeramicExpertQuestion(questionOverride) {
   } finally {
     if (askCeramicExpert) askCeramicExpert.disabled = false;
   }
+}
+
+async function askCeramicExpertVoice(blob) {
+  if (!blob || !blob.size) {
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Audio vacio.";
+    return;
+  }
+  if (askCeramicExpert) askCeramicExpert.disabled = true;
+  if (recordChatVoice) recordChatVoice.disabled = true;
+  if (ceramicChatStatus) ceramicChatStatus.textContent = "Transcribiendo voz...";
+  try {
+    const data = new FormData();
+    data.append("chat_audio", blob, "ceramiq-chat.webm");
+    data.append("case_context", caseDescription ? caseDescription.value.trim() : "");
+    data.append("material_system", JSON.stringify(selectedMaterialPayload()));
+    const response = await fetch("/api/ceramiq/chat", { method: "POST", body: data });
+    if (!response.ok) throw new Error("Voice chat endpoint failed");
+    const result = await response.json();
+    if (result.question_transcript) appendChatBubble("user", result.question_transcript);
+    if (result.ok === false) {
+      appendChatBubble("assistant", result.error || "No se pudo transcribir la pregunta por voz.");
+      if (ceramicChatStatus) ceramicChatStatus.textContent = "Voz no transcrita.";
+      return;
+    }
+    appendChatBubble("assistant", result.answer || "No hay respuesta tecnica disponible.");
+    speakChatAnswer(result.answer || "");
+    if (ceramicChatStatus) {
+      ceramicChatStatus.textContent = (result.engine || "Ceramic IQ Expert") + " · voz · " + (result.rag_source || "RAG ceramico") + " · " + (result.intent || "consulta");
+    }
+  } catch (error) {
+    appendChatBubble("assistant", "No se pudo procesar la voz ahora. Prueba por texto o revisa micro/conexion.");
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Consulta por voz no completada.";
+  } finally {
+    if (askCeramicExpert) askCeramicExpert.disabled = false;
+    if (recordChatVoice) recordChatVoice.disabled = false;
+  }
+}
+
+function speakChatAnswer(text) {
+  if (!chatSpeechEnabled || !text || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "es-ES";
+  utterance.rate = 0.98;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
 }
 
 function renderClinicalResult(result) {
@@ -425,6 +482,74 @@ document.querySelectorAll("[data-go]").forEach((button) => button.addEventListen
 if (runAnalysis) runAnalysis.addEventListener("click", sendToClinicalHarness);
 if (indexCase) indexCase.addEventListener("click", indexCurrentCase);
 if (askCeramicExpert) askCeramicExpert.addEventListener("click", () => askCeramicExpertQuestion());
+if (toggleChatSpeech) toggleChatSpeech.addEventListener("click", () => {
+  chatSpeechEnabled = !chatSpeechEnabled;
+  toggleChatSpeech.setAttribute("aria-pressed", String(chatSpeechEnabled));
+  toggleChatSpeech.textContent = chatSpeechEnabled ? "Oyendo" : "Escuchar";
+  if (!chatSpeechEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+});
+if (recordChatVoice) recordChatVoice.addEventListener("click", async () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRecognition) {
+    if (chatRecognition) {
+      chatRecognition.stop();
+      chatRecognition = null;
+      recordChatVoice.classList.remove("recording");
+      recordChatVoice.querySelector("strong").textContent = "Voz";
+      return;
+    }
+    chatRecognition = new SpeechRecognition();
+    chatRecognition.lang = "es-ES";
+    chatRecognition.interimResults = false;
+    chatRecognition.maxAlternatives = 1;
+    chatRecognition.onresult = (event) => {
+      const transcript = Array.from(event.results || [])
+        .map((result) => result[0] && result[0].transcript ? result[0].transcript : "")
+        .join(" ")
+        .trim();
+      if (transcript) askCeramicExpertQuestion(transcript);
+    };
+    chatRecognition.onerror = () => {
+      if (ceramicChatStatus) ceramicChatStatus.textContent = "No se pudo reconocer la voz.";
+    };
+    chatRecognition.onend = () => {
+      chatRecognition = null;
+      recordChatVoice.classList.remove("recording");
+      recordChatVoice.querySelector("strong").textContent = "Voz";
+    };
+    recordChatVoice.classList.add("recording");
+    recordChatVoice.querySelector("strong").textContent = "Parar";
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Escuchando pregunta...";
+    chatRecognition.start();
+    return;
+  }
+  if (chatRecorder && chatRecorder.state === "recording") {
+    chatRecorder.stop();
+    recordChatVoice.classList.remove("recording");
+    recordChatVoice.querySelector("strong").textContent = "Voz";
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+    if (ceramicChatStatus) ceramicChatStatus.textContent = "Micro no disponible en este navegador.";
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  chatAudioChunks = [];
+  chatRecorder = new MediaRecorder(stream);
+  chatRecorder.ondataavailable = (event) => {
+    if (event.data.size) chatAudioChunks.push(event.data);
+  };
+  chatRecorder.onstop = async () => {
+    stream.getTracks().forEach((track) => track.stop());
+    const blob = new Blob(chatAudioChunks, { type: chatRecorder.mimeType || "audio/webm" });
+    recordChatVoice.querySelector("strong").textContent = "Voz";
+    await askCeramicExpertVoice(blob);
+  };
+  chatRecorder.start();
+  recordChatVoice.classList.add("recording");
+  recordChatVoice.querySelector("strong").textContent = "Parar";
+  if (ceramicChatStatus) ceramicChatStatus.textContent = "Grabando pregunta...";
+});
 document.querySelectorAll("[data-chat-prompt]").forEach((button) => button.addEventListener("click", () => askCeramicExpertQuestion(button.dataset.chatPrompt)));
 if (ceramicChatQuestion) ceramicChatQuestion.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") askCeramicExpertQuestion();

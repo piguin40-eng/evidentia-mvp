@@ -35,6 +35,7 @@ SESSION_COOKIE = "ceramiq_session"
 SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode("utf-8")).hexdigest() if BASIC_AUTH_ENABLED else ""
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_AGENT_MODEL = os.environ.get("CERAMIQ_AGENT_MODEL", "gpt-4.1-mini").strip()
+OPENAI_TRANSCRIBE_MODEL = os.environ.get("CERAMIQ_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe").strip()
 OPENAI_AGENT_ENABLED = os.environ.get("CERAMIQ_ENABLE_OPENAI_AGENT", "1").strip().lower() in {"1", "true", "yes"}
 OPENAI_WEB_SEARCH_ENABLED = os.environ.get("CERAMIQ_ENABLE_WEB_SEARCH", "1").strip().lower() in {"1", "true", "yes"}
 
@@ -302,8 +303,82 @@ def public_text(value):
     return re.sub("yoli" + "to", "Ceramic IQ", value, flags=re.IGNORECASE)
 
 
+def parse_multipart_form(content_type, body):
+    boundary_token = "boundary="
+    boundary = content_type.split(boundary_token, 1)[-1].strip().strip('"') if boundary_token in content_type else ""
+    fields = {}
+    files = {}
+    if not boundary:
+        return fields, files
+    marker = ("--" + boundary).encode("utf-8")
+    for part in body.split(marker):
+        header, _, payload = part.partition(b"\r\n\r\n")
+        if not header or not payload:
+            continue
+        header_text = header.decode("utf-8", "ignore")
+        name_match = re.search(r'name="([^"]+)"', header_text)
+        if not name_match:
+            continue
+        clean_payload = payload.rstrip(b"\r\n-")
+        file_match = re.search(r'filename="([^"]+)"', header_text)
+        field_name = name_match.group(1)
+        if file_match:
+            files.setdefault(field_name, []).append({"name": file_match.group(1), "payload": clean_payload})
+        else:
+            fields[field_name] = clean_payload.decode("utf-8", "ignore").strip()
+    return fields, files
+
+
+def transcribe_audio_with_openai(audio_name, audio_payload):
+    if not OPENAI_API_KEY or not audio_payload:
+        return ""
+    boundary = "ceramiq-audio-" + hashlib.sha256(audio_payload[:256]).hexdigest()[:16]
+    file_name = audio_name or "ceramiq-audio.webm"
+    body = b"".join(
+        [
+            (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="model"\r\n\r\n'
+                f"{OPENAI_TRANSCRIBE_MODEL}\r\n"
+            ).encode("utf-8"),
+            (
+                f"--{boundary}\r\n"
+                'Content-Disposition: form-data; name="language"\r\n\r\n'
+                "es\r\n"
+            ).encode("utf-8"),
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="{file_name}"\r\n'
+                "Content-Type: audio/webm\r\n\r\n"
+            ).encode("utf-8"),
+            audio_payload.rstrip(b"\r\n-"),
+            f"\r\n--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/audio/transcriptions",
+        data=body,
+        headers={
+            "Authorization": "Bearer " + OPENAI_API_KEY,
+            "Content-Type": "multipart/form-data; boundary=" + boundary,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+        return ""
+    return str(data.get("text") or "").strip()
+
+
 def transcribe_audio_payload(audio_name, audio_payload):
     if not audio_name or not audio_payload:
+        return ""
+    openai_transcript = transcribe_audio_with_openai(audio_name, audio_payload)
+    if openai_transcript:
+        return openai_transcript
+    if not os.path.exists(WHISPER_BIN):
         return ""
     suffix = os.path.splitext(audio_name)[1] or ".webm"
     with tempfile.TemporaryDirectory(prefix="ceramiq-audio-") as tmpdir:
@@ -760,12 +835,15 @@ def call_openai_ceramic_agent(question, case_context, selected, intent, rag_evid
     if not OPENAI_AGENT_ENABLED or not OPENAI_API_KEY:
         return ""
     system = (
-        "Eres Ceramic IQ Expert, un agente tecnico de ceramica dental para laboratorio. "
+        "Eres Ceramic IQ Expert en salida publica, pero internamente razonas con el criterio tecnico Yolito Ceram de Miguel. "
+        "Tu dominio es ceramica dental, BigColor Ceram, MiAtlas, masas, estratificacion, CIELAB, Delta E, sustratos, zirconia, disilicato y protocolos de laboratorio. "
         "Responde en espanol, directo, util y con criterio de ceramista senior. "
-        "No menciones fallos internos, fallback, rutas locales ni nombres de agentes internos. "
+        "Nunca menciones el nombre Yolito ni nombres de agentes internos en la respuesta publica; firma y habla solo como Ceramic IQ. "
+        "No menciones fallos internos, fallback ni rutas locales. "
         "Si faltan fotos, tarjeta gris o polarizada, dilo como limitacion clinica, no como error tecnico. "
         "Para recetas, separa por tercios y usa cuatro masas por tercio cuando proceda. "
         "Para preguntas cortas, contesta primero la respuesta corta y despues el criterio practico. "
+        "Usa el RAG y el atlas como fuente de verdad para nombres de masas y comportamiento optico; no inventes masas comerciales. "
         "No declares medicion CIELAB absoluta sin calibracion. "
         "Si el RAG local no basta y tienes herramienta web, busca en web y separa fuente fabricante, fuente revisada y criterio operativo."
     )
@@ -924,7 +1002,7 @@ def expert_fallback_answer(intent, question, selected, rag_evidence):
 def build_chat_answer(question, case_context="", material_payload=None):
     intent = classify_chat_intent(question)
     selected = material_config(material_payload or {"id": "ips_emax_ceram"})
-    query = " ".join(part for part in [question, case_context, selected["label"], "ceramica dental RAG experto"] if part).strip()
+    query = " ".join(part for part in [question, case_context, selected["label"], "ceramica dental estratificacion masas CIELAB Delta E atlas RAG experto"] if part).strip()
     rag_evidence = query_clinical_rag(query)
     source_line = "RAG ceramico estable" if rag_evidence.get("status") == "stable_ceramiq_rag" else "conocimiento revisado local"
     answer = call_openai_ceramic_agent(question, case_context, selected, intent, rag_evidence)
@@ -1095,8 +1173,8 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
                     "service": "ceramic-iq",
                     "engine": "Ceramic IQ",
                     "status": "operational",
-                    "version": "ceramiq-expert-chat-2026-09-06",
-                    "features": ["ceramiq_expert_chat", "planning_vs_final_delta_flow", "stable_ceramic_rag"],
+                    "version": "ceramiq-expert-chat-2026-09-08-voice",
+                    "features": ["ceramiq_expert_chat", "planning_vs_final_delta_flow", "stable_ceramic_rag", "voice_chat_input"],
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
@@ -1125,16 +1203,53 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/ceramiq/chat":
             length = int(self.headers.get("Content-Length", "0"))
-            raw = self.rfile.read(length).decode("utf-8", errors="replace")
-            try:
-                payload_in = json.loads(raw or "{}")
-            except json.JSONDecodeError:
-                payload_in = {}
+            content_type = self.headers.get("Content-Type", "")
+            raw_body = self.rfile.read(length)
+            payload_in = {}
+            question_transcript = ""
+            voice_input = False
+            if content_type.startswith("multipart/form-data"):
+                fields, files = parse_multipart_form(content_type, raw_body)
+                payload_in = fields
+                try:
+                    payload_in["material_system"] = json.loads(fields.get("material_system") or "{}")
+                except json.JSONDecodeError:
+                    payload_in["material_system"] = {"id": "ips_emax_ceram", "custom_name": ""}
+                audio_files = files.get("chat_audio") or []
+                if audio_files:
+                    voice_input = True
+                    first_audio = audio_files[0]
+                    question_transcript = transcribe_audio_payload(first_audio.get("name", ""), first_audio.get("payload", b""))
+                    payload_in["question"] = " ".join(
+                        part for part in [fields.get("question", ""), question_transcript] if part
+                    ).strip()
+            else:
+                raw = raw_body.decode("utf-8", errors="replace")
+                try:
+                    payload_in = json.loads(raw or "{}")
+                except json.JSONDecodeError:
+                    payload_in = {}
+            if voice_input and not question_transcript:
+                response = {
+                    "ok": False,
+                    "engine": "Ceramic IQ Expert",
+                    "voice_input": True,
+                    "error": "No he podido transcribir la voz. Repite mas cerca del micro o escribe la pregunta.",
+                }
+                payload = json.dumps(response, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             response = build_chat_answer(
                 str(payload_in.get("question") or ""),
                 str(payload_in.get("case_context") or ""),
                 payload_in.get("material_system") or {"id": "ips_emax_ceram", "custom_name": ""},
             )
+            response["voice_input"] = voice_input
+            response["question_transcript"] = question_transcript
             payload = json.dumps(response, ensure_ascii=False).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
