@@ -1196,8 +1196,10 @@ class CeramIQHandler(SimpleHTTPRequestHandler):
                     "service": "ceramic-iq",
                     "engine": "Ceramic IQ",
                     "status": "operational",
-                    "version": "ceramiq-expert-chat-2026-09-08-intent-fix",
+                    "version": "ceramiq-expert-chat-2026-09-08-openai-health",
                     "features": ["ceramiq_expert_chat", "planning_vs_final_delta_flow", "stable_ceramic_rag", "voice_chat_input"],
+                    "openai_agent": "configured" if OPENAI_API_KEY else "missing",
+                    "web_search": "enabled" if OPENAI_API_KEY and OPENAI_WEB_SEARCH_ENABLED else "unavailable",
                 },
                 ensure_ascii=False,
             ).encode("utf-8")
