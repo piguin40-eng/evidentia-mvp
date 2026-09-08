@@ -555,6 +555,9 @@ def recipe_for_case(thirds, case_text, material):
                 mass(mat["mamelon_light"] if d_a <= 1 else mat["mamelon_warm"], 22, "detalle interno y naturalidad"),
             ]
             note = "Aplicar halo y translucidez en capa fina; evitar subir demasiado el valor si ya esta alto."
+        diagnosis = third.get("diagnosis", "").strip()
+        if diagnosis:
+            note = diagnosis + " " + note
         recipe.append({"third": name, "material": mat["label"], "application_note": note, "masses": normalize_masses(masses)})
     return recipe
 
