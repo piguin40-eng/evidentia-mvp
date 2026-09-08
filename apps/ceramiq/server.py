@@ -768,7 +768,9 @@ def build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_
 
 def classify_chat_intent(question):
     text = question.lower()
-    if any(term in text for term in ["opaco", "opaca", "opacidad", "bloquear", "bloqueo", "enmascarar", "tapar"]):
+    if re.search(r"\b(ht|lt|mt|ho|mo)\b", text):
+        return "ingot_translucency"
+    if any(term in text for term in ["opaco", "opaca", "opacidad", "bloquear", "bloquea", "bloquean", "bloqueo", "enmascarar", "enmascara", "tapar", "tapa"]):
         return "opacity"
     if any(term in text for term in ["transparente", "transparencia", "translucido", "translucida", "translúcido", "translúcida", "translucidez", "transpa", "opal", "opalescente", "opalescencia"]):
         return "translucency"
@@ -940,6 +942,27 @@ def call_openai_chat_agent(system, user):
 def expert_fallback_answer(intent, question, selected, rag_evidence):
     text = question.lower()
     material = selected["label"]
+    if intent == "ingot_translucency":
+        code_match = re.search(r"\b(ht|lt|mt|ho|mo)\b", text)
+        code = code_match.group(1).upper() if code_match else "HT"
+        meanings = {
+            "HT": "High Translucency: alta translucidez, deja pasar mas luz y enseña mas el sustrato. No bloquea; sirve cuando el munon/color base ya acompaña y quieres naturalidad.",
+            "LT": "Low Translucency: menor translucidez que HT, mas capacidad de sostener valor y enmascarar moderadamente. Suele ser mas seguro que HT si el sustrato no es perfecto.",
+            "MT": "Medium Translucency: translucidez intermedia; compromiso entre valor, profundidad y control del sustrato.",
+            "MO": "Medium Opacity: mas opaco que LT/MT/HT; indicado para sustratos mas comprometidos o estructuras donde necesitas bloqueo.",
+            "HO": "High Opacity: alta opacidad; se usa para maximo bloqueo, pero exige estratificacion encima para no quedar plano.",
+        }
+        if "bloque" in text or "opac" in text or "tapa" in text:
+            return (
+                f"{code}: {meanings.get(code, meanings['HT'])} "
+                "Si preguntas cual bloquea mas, el orden practico en disilicato/ingotes es HO > MO > LT/MT > HT. "
+                "En IPS e.max Ceram como ceramica de recubrimiento, el bloqueo lo aportan Deep Dentin/Opaque Dentin/blocker del sistema, no las masas Transpa ni HT."
+            )
+        return (
+            f"{code}: {meanings.get(code, meanings['HT'])} "
+            "No lo mezcles con masas de estratificacion: HT/LT/MT/MO/HO describen translucidez/opacidad del material base o pastilla/bloque; "
+            "la receta encima se decide con dentinas, deep dentin, incisales, opalescentes y transpa segun foto, espesor y sustrato."
+        )
     if intent == "opacity":
         if material == "IPS e.max Ceram" or "emax" in text or "e.max" in text:
             return (
