@@ -1,10 +1,10 @@
-const CACHE_NAME = "evidentia-shell-v40-woman-photo-mobile-full";
+const CACHE_NAME = "evidentia-shell-v43-knowledge-chat";
 const STABLE_URL = "https://evidentia-ytra.onrender.com/";
 const SHELL_ASSETS = [
   "./reset.html?v=20260708-stable-mobile",
   "./website.css?v=20260708-stable-mobile",
   "./styles.css?v=20260709-woman-photo-mobile-full",
-  "./app.js?v=20260709-woman-photo-mobile-full",
+  "./app.js?v=20260908-evidentia-knowledge-chat",
   "./manifest.webmanifest?v=20260708-stable-mobile",
   "./icon.svg?v=20260624-mirror-e",
   "./assets/icons/icon-192.png?v=20260708-stable-mobile",

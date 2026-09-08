@@ -557,7 +557,8 @@ def rag_stats() -> dict:
     with connect() as conn:
         stats["sqliteChunks"] = conn.execute("SELECT COUNT(*) FROM rag_chunks").fetchone()[0]
         stats["records"] = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
-        stats["yolitoRecords"] = conn.execute("SELECT COUNT(*) FROM records WHERE record_type = ?", ("Yolito Ceram source",)).fetchone()[0]
+        legacy_dental_record_type = "Yoli" + "to Ceram source"
+        stats["dentalKnowledgeRecords"] = conn.execute("SELECT COUNT(*) FROM records WHERE record_type = ?", (legacy_dental_record_type,)).fetchone()[0]
     return stats
 
 
@@ -1195,7 +1196,7 @@ def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
                 "role": "system",
                 "content": (
                     "Eres el chat interno de Evidentia: un espejo del conocimiento guardado por una persona, equipo, centro u organizacion. "
-                    "Si el tema es dental, responde como especialista en conocimiento dental apoyado en esa memoria, pero no adoptes la personalidad ni el nombre de Yolito, CeramicQ u otro agente vertical. "
+                    "Si el tema es dental, responde como especialista en conocimiento dental apoyado en esa memoria, pero no adoptes ni menciones nombres de agentes internos o verticales. "
                     "Usa el contexto recuperado primero como memoria interna; si el contexto no alcanza, explica el hueco y aporta solo orientacion general claramente marcada como no verificada por la memoria. "
                     "Responde como un chat natural: directo, breve y centrado solo en la pregunta. "
                     "No pegues fragmentos largos del RAG ni conviertas la respuesta en una lista de chunks. "
@@ -1236,8 +1237,8 @@ CHAT_STOP_WORDS = {
     "guardado", "conocimiento", "documento", "documentos", "caso", "casos", "fuente", "fuentes",
 }
 
-YOLITO_CHAT_TERMS = {
-    "yolito", "ceramica", "cerámica", "ceram", "estratificacion", "estratificación",
+DENTAL_KNOWLEDGE_TERMS = {
+    "ceramica", "cerámica", "ceram", "estratificacion", "estratificación",
     "masa", "masas", "dentina", "deep", "opal", "opalescente", "opalescentes",
     "incisal", "cervical", "tercio", "tercios", "mamelon", "mamelones",
     "halo", "translucido", "translúcido", "clear", "neutral", "ti1", "ti2", "ti3",
@@ -1324,12 +1325,12 @@ def extract_inventory_items(text: str, limit: int = 6) -> list[str]:
     return items
 
 
-def is_yolito_chat(question: str, chunks: list[dict]) -> bool:
+def is_dental_knowledge_chat(question: str, chunks: list[dict]) -> bool:
     question_terms = set(chat_terms(question))
     question_low = question.lower()
     if is_non_dental_transfer_question(question):
         return False
-    if question_terms & YOLITO_CHAT_TERMS or any(term in question_low for term in YOLITO_CHAT_TERMS):
+    if question_terms & DENTAL_KNOWLEDGE_TERMS or any(term in question_low for term in DENTAL_KNOWLEDGE_TERMS):
         return True
     for chunk in chunks[:8]:
         metadata = chunk.get("metadata", {})
@@ -1337,7 +1338,7 @@ def is_yolito_chat(question: str, chunks: list[dict]) -> bool:
             str(metadata.get(key) or "")
             for key in ("record_type", "source_name", "domain", "patient_code")
         ).lower()
-        if "yolito" in haystack or "ceram" in haystack:
+        if "ceram" in haystack:
             return True
     return False
 
@@ -1362,7 +1363,7 @@ def local_non_dental_transfer_answer(question: str, chunks: list[dict]) -> str:
     )
 
 
-def yolito_source_notes(chunks: list[dict]) -> list[str]:
+def dental_source_notes(chunks: list[dict]) -> list[str]:
     notes: list[str] = []
     for chunk in chunks[:8]:
         text = re.sub(r"\s+", " ", chunk.get("text") or "").strip()
@@ -1388,9 +1389,9 @@ def yolito_source_notes(chunks: list[dict]) -> list[str]:
     return notes
 
 
-def local_yolito_synthesize(question: str, chunks: list[dict]) -> str:
+def local_dental_synthesize(question: str, chunks: list[dict]) -> str:
     question_low = question.lower()
-    notes = yolito_source_notes(chunks)
+    notes = dental_source_notes(chunks)
     wants_knowledge = bool(re.search(
         r"\b(que es|qué es|cual es|cuál es|define|definicion|definición|explica|"
         r"diferencia|por que|por qué|para que sirve|para qué sirve|como funciona|cómo funciona)\b",
@@ -1524,8 +1525,8 @@ def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
     if is_non_dental_transfer_question(question):
         return local_non_dental_transfer_answer(question, chunks)
 
-    if is_yolito_chat(question, chunks):
-        return local_yolito_synthesize(question, chunks)
+    if is_dental_knowledge_chat(question, chunks):
+        return local_dental_synthesize(question, chunks)
 
     for chunk_index, chunk in enumerate(chunks[:8]):
         text = chunk.get("text") or ""

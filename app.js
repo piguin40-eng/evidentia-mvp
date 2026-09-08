@@ -446,7 +446,7 @@ function renderKnowledgeRoutingBand() {
     '<div class="routing-flow">' +
     routingNode("01", "Conocimiento", recordCount + " registros", "Notas, protocolos, decisiones y contexto del equipo.") +
     routingNode("02", "Vector RAG", chunks + " fragmentos", "Busqueda semantica local con fuentes recuperables.") +
-    routingNode("03", "Agentes", "Pedro / Faki / Yolito", "Roles que consultan sin inventar y citan origen.") +
+    routingNode("03", "Agentes internos", "Pedro / Faki / conocimiento dental", "Roles que consultan sin inventar y citan origen.") +
     routingNode("04", "Projects", "Claude / ChatGPT", "Memoria exportable para trabajo por proyecto.") +
     routingNode("05", "Control", "Consentimiento", "Permisos, limites y revision humana antes de uso externo.") +
     '</div>' +
@@ -727,7 +727,7 @@ function renderQuery() {
 function renderChat() {
   const localPanel = renderLocalFirstPanel();
   return '<section class="card chat-shell">' +
-    '<div class="section-head"><div><span class="eyebrow">Yolito chat</span><h1>Pregunta a Yolito</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
+    '<div class="section-head"><div><span class="eyebrow">Mirror chat</span><h1>Pregunta al mirror</h1></div><span class="score">' + state.records.length + ' registros</span></div>' +
     '<div class="chat-layout">' +
     '<div class="chat-thread" id="knowledgeChatThread">' + state.chatMessages.map(chatBubble).join("") + '</div>' +
     '<aside class="chat-prompts">' + localPanel + '<h3>Preguntas utiles</h3>' +
@@ -825,7 +825,7 @@ function renderConnectors() {
     metric("Formato", "JSON trazable") +
     '</div>' +
     '<div class="connector-grid">' +
-    connectorCard("Paquete para agente", "Descarga un JSON con registros, fuentes, entidades, chunks y reglas para que Pedro, Faki, Yolito u otro agente trabajen con memoria verificable.", '<button class="primary" id="exportKnowledgeBundle" type="button">Descargar knowledge bundle</button>') +
+    connectorCard("Paquete para agente", "Descarga un JSON con registros, fuentes, entidades, chunks y reglas para que Evidentia y tus agentes internos trabajen con memoria verificable.", '<button class="primary" id="exportKnowledgeBundle" type="button">Descargar knowledge bundle</button>') +
     connectorCard("Claude / ChatGPT Projects", "Carga el bundle en un Project para que el contexto no sea una conversacion suelta: queda organizado por fuentes, casos y limites.", '<button class="secondary" id="copyConnectorEndpoint" type="button">Copiar endpoint local</button><code id="connectorEndpoint">' + escapeHtml(endpoint) + '</code>') +
     connectorCard("Gobierno de datos", "Antes de conectar datos sensibles: definir destino, responsable, base juridica, consentimiento, minimizacion y si hay transferencia externa.", '<button class="secondary" data-set-view="consent" type="button">Preparar consentimiento</button><span class="chip warn">No enviar fuera sin permiso</span>') +
     '</div>' +
@@ -833,7 +833,7 @@ function renderConnectors() {
     '<ul class="entity-files">' +
     '<li><strong>v1 local</strong><span>Export JSON y endpoint local para agente/proyecto controlado por el cliente.</span></li>' +
     '<li><strong>v2 permisos</strong><span>API keys, responsable por conexion, logs de acceso, consentimiento y alcance por workspace.</span></li>' +
-    '<li><strong>v3 orquestacion</strong><span>Pedro revisa construccion, Faki web/conversion, Yolito conocimiento dental y otros agentes consumen solo lo autorizado.</span></li>' +
+    '<li><strong>v3 orquestacion</strong><span>Pedro revisa construccion, Faki web/conversion y Evidentia usa conocimiento dental solo desde memoria autorizada.</span></li>' +
     '<li><strong>v4 marketplace</strong><span>Conectores certificados para ChatGPT Projects, Claude Projects, Make, n8n, Notion, Drive y CRMs.</span></li>' +
     '</ul></article>' +
     '</section>';
@@ -845,7 +845,7 @@ function connectorCard(title, text, actionHtml) {
 
 function renderCases() {
   const groups = groupedCases();
-  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Vault</span><h1>Casos estructurados</h1><p class="lead">Cada caso agrupa sus entradas. Yolito, notas, fotos y PDFs se guardan dentro del conocimiento; no como paginas nuevas.</p></div><span class="score">' + groups.length + ' casos · ' + state.records.length + ' entradas</span></div>' +
+  return '<section class="card"><div class="section-head"><div><span class="eyebrow">Vault</span><h1>Casos estructurados</h1><p class="lead">Cada caso agrupa sus entradas. El conocimiento dental, notas, fotos y PDFs se guardan dentro de Evidentia; no como paginas nuevas.</p></div><span class="score">' + groups.length + ' casos · ' + state.records.length + ' entradas</span></div>' +
     '<div class="case-list">' + (groups.length ? groups.map(caseGroupCard).join("") : '<p class="muted">Todavia no hay conocimiento guardado.</p>') + '</div></section>';
 }
 
