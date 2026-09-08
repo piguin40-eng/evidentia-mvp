@@ -36,6 +36,7 @@ SESSION_TOKEN = hashlib.sha256(f"{BASIC_AUTH_USER}:{BASIC_AUTH_PASSWORD}".encode
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_AGENT_MODEL = os.environ.get("CERAMIQ_AGENT_MODEL", "gpt-4.1-mini").strip()
 OPENAI_AGENT_ENABLED = os.environ.get("CERAMIQ_ENABLE_OPENAI_AGENT", "1").strip().lower() in {"1", "true", "yes"}
+OPENAI_WEB_SEARCH_ENABLED = os.environ.get("CERAMIQ_ENABLE_WEB_SEARCH", "1").strip().lower() in {"1", "true", "yes"}
 
 
 MATERIALS = {
@@ -661,6 +662,8 @@ def classify_chat_intent(question):
     text = question.lower()
     if any(term in text for term in ["opaco", "opaca", "opacidad", "bloquear", "bloqueo", "enmascarar", "tapar"]):
         return "opacity"
+    if any(term in text for term in ["transparente", "transparencia", "translucido", "translucida", "translúcido", "translúcida", "translucidez", "transpa", "opal", "opalescente", "opalescencia"]):
+        return "translucency"
     if any(term in text for term in ["cemento", "cementar", "adhesivo", "bond", "mdp", "silano", "grabado"]):
         return "cement"
     if any(term in text for term in ["material", "bloque", "zirconia", "disilicato", "feldespat", "metal", "estructura"]):
@@ -730,7 +733,8 @@ def call_openai_ceramic_agent(question, case_context, selected, intent, rag_evid
         "Si faltan fotos, tarjeta gris o polarizada, dilo como limitacion clinica, no como error tecnico. "
         "Para recetas, separa por tercios y usa cuatro masas por tercio cuando proceda. "
         "Para preguntas cortas, contesta primero la respuesta corta y despues el criterio practico. "
-        "No declares medicion CIELAB absoluta sin calibracion."
+        "No declares medicion CIELAB absoluta sin calibracion. "
+        "Si el RAG local no basta y tienes herramienta web, busca en web y separa fuente fabricante, fuente revisada y criterio operativo."
     )
     user = (
         f"Pregunta: {question}\n"
@@ -739,6 +743,58 @@ def call_openai_ceramic_agent(question, case_context, selected, intent, rag_evid
         f"Intencion clasificada: {intent}\n"
         f"Contexto RAG publicable:\n{compact_rag_context(rag_evidence)}"
     )
+    if OPENAI_WEB_SEARCH_ENABLED:
+        web_answer = call_openai_responses_agent(system, user)
+        if web_answer:
+            return web_answer
+    return call_openai_chat_agent(system, user)
+
+
+def extract_responses_text(data):
+    if isinstance(data.get("output_text"), str) and data["output_text"].strip():
+        return data["output_text"].strip()
+    parts = []
+    for item in data.get("output", []) or []:
+        if item.get("type") != "message":
+            continue
+        for content in item.get("content", []) or []:
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                parts.append(str(content["text"]))
+    return "\n".join(part.strip() for part in parts if part.strip()).strip()
+
+
+def call_openai_responses_agent(system, user):
+    payload = json.dumps(
+        {
+            "model": OPENAI_AGENT_MODEL,
+            "input": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "tools": [{"type": "web_search_preview"}],
+            "tool_choice": "auto",
+            "temperature": 0.2,
+            "max_output_tokens": 700,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=payload,
+        headers={
+            "Authorization": "Bearer " + OPENAI_API_KEY,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=24) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+        return ""
+    return public_text(extract_responses_text(data))
+
+
+def call_openai_chat_agent(system, user):
     payload = json.dumps(
         {
             "model": OPENAI_AGENT_MODEL,
@@ -785,6 +841,18 @@ def expert_fallback_answer(intent, question, selected, rag_evidence):
         return (
             f"Respuesta corta: dentro de {material}, busca la masa de dentina profunda, opaque dentin o blocker del sistema; no una masa incisal/translucida. "
             "La masa mas opaca depende de la tabla real del fabricante, asi que confirma IFU antes de protocolizarlo para curso."
+        )
+    if intent == "translucency":
+        if material == "IPS e.max Ceram" or "emax" in text or "e.max" in text:
+            return (
+                "Respuesta corta: en IPS e.max Ceram, la zona de mayor transparencia se trabaja con masas Transpa, sobre todo Transpa neutral/clear y Transpa blue segun el efecto que busques. "
+                "No confundas transparencia con opalescencia: Opal Effect aporta comportamiento opalescente y vida incisal, pero no es simplemente la masa mas transparente. "
+                "Orden practico para decidir: Transpa neutral/clear para profundidad neutra, Transpa blue para borde frio y profundidad, Opal Effect para opalescencia, Incisal I1/I2 para valor del esmalte, Dentin/Deep Dentin para cuerpo y opacidad. "
+                "Si el alumno pregunta cual es la mas transparente, la respuesta corta es Transpa; si pregunta cual deja el borde mas natural, combina Transpa con Opal Effect e Incisal segun foto y valor."
+            )
+        return (
+            f"Respuesta corta: dentro de {material}, busca las masas Transpa/Transparent/Clear del sistema. "
+            "Opal no significa automaticamente maxima transparencia; significa efecto opalescente. Confirma el nombre comercial exacto en la carta del fabricante."
         )
     if intent == "material":
         return (
