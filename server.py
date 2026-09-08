@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import request as urlrequest
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 
 ROOT = Path(__file__).resolve().parent
@@ -42,7 +42,10 @@ DERIVED_DIR = DATA_DIR / "derived"
 AUDIO_DERIVED_DIR = DERIVED_DIR / "audio"
 TRANSCRIPT_DIR = DERIVED_DIR / "transcripts"
 EXPORT_DIR = DATA_DIR / "exports"
+ACCOUNT_REQUESTS_DIR = DATA_DIR / "account-requests"
 BACKUP_DIR = DATA_DIR / "backups" / "render-node"
+CLIENT_AI_CONFIG_PATH = DATA_DIR / "client_ai_config.json"
+BILLING_CONFIG_PATH = DATA_DIR / "billing_config.json"
 CHROMA_COLLECTION = "evidentia_knowledge"
 ENABLE_CHROMA = os.getenv("EVIDENTIA_ENABLE_CHROMA", "").strip().lower() in {"1", "true", "yes"}
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
@@ -67,6 +70,17 @@ PUBLIC_STATIC_FILES = {
     "website.css",
     "PILOT_LAUNCH_PLAN.md",
 }
+STREAM_CHUNK_BYTES = int(os.getenv("EVIDENTIA_STREAM_CHUNK_BYTES", str(256 * 1024)))
+MAX_CONNECTOR_EXPORT_CHUNKS = int(os.getenv("EVIDENTIA_CONNECTOR_EXPORT_CHUNKS", "2000"))
+ALLOWED_CLIENT_AI_PROVIDERS = {"openai", "azure_openai", "anthropic", "local_endpoint"}
+ALLOWED_CLIENT_AI_MODES = {"helix_managed", "client_key", "dedicated"}
+ALLOWED_BILLING_PLANS = {"personal", "pro", "clinic", "private_node"}
+ALLOWED_SUBSCRIPTION_STATES = {"trial", "active", "past_due", "canceled", "manual_pending"}
+ALLOWED_PAYMENT_PROVIDERS = {"none", "stripe", "apple_iap", "manual_b2b"}
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_PRICE_ID = os.getenv("STRIPE_EVIDENTIA_PERSONAL_PRICE_ID", "").strip()
+PUBLIC_BASE_URL = os.getenv("EVIDENTIA_PUBLIC_BASE_URL", "").strip()
+ALLOW_STRIPE_SANDBOX = os.getenv("EVIDENTIA_ALLOW_STRIPE_SANDBOX", "").strip().lower() in {"1", "true", "yes"}
 
 
 def normalize_auth_user(value: str) -> str:
@@ -122,6 +136,7 @@ def connect() -> sqlite3.Connection:
     AUDIO_DERIVED_DIR.mkdir(parents=True, exist_ok=True)
     TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    ACCOUNT_REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
     VECTOR_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -516,6 +531,7 @@ def index_record_in_rag(record: dict) -> int:
 
 
 def rag_stats() -> dict:
+    latest_snapshot = latest_local_snapshot()
     stats = {
         "path": str(RAG_DIR),
         "collection": CHROMA_COLLECTION,
@@ -523,6 +539,8 @@ def rag_stats() -> dict:
         "backend": "compact_vector",
         "vectorPath": str(VECTOR_MATRIX_PATH),
         "compactVectorChunks": 0,
+        "latestSnapshot": latest_snapshot,
+        "externalRestoreVerified": False,
     }
     if VECTOR_IDS_PATH.exists():
         try:
@@ -541,6 +559,37 @@ def rag_stats() -> dict:
         stats["records"] = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
         stats["yolitoRecords"] = conn.execute("SELECT COUNT(*) FROM records WHERE record_type = ?", ("Yolito Ceram source",)).fetchone()[0]
     return stats
+
+
+def latest_local_snapshot() -> dict:
+    candidates = []
+    directories = [BACKUP_DIR, DATA_DIR / "backups" / "local-node"]
+    if DATA_DIR == (ROOT / "data").resolve():
+        directories.append(ROOT / "backups" / "local-node")
+    for directory in directories:
+        if not directory.exists():
+            continue
+        candidates.extend(path for path in directory.glob("*.tar.gz") if path.is_file())
+
+    if not candidates:
+        return {
+            "exists": False,
+            "path": "",
+            "createdAt": "",
+            "sizeBytes": 0,
+        }
+
+    latest = max(candidates, key=lambda path: path.stat().st_mtime)
+    try:
+        display_path = str(latest.relative_to(ROOT))
+    except ValueError:
+        display_path = str(latest)
+    return {
+        "exists": True,
+        "path": display_path,
+        "createdAt": datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).replace(microsecond=0).isoformat(),
+        "sizeBytes": latest.stat().st_size,
+    }
 
 
 def create_runtime_backup() -> dict:
@@ -632,6 +681,18 @@ def rebuild_runtime_vector_index() -> dict:
 
 
 def ai_status() -> dict:
+    client_ai = client_ai_status()
+    if client_ai.get("active"):
+        return {
+            "provider": client_ai.get("provider"),
+            "active": True,
+            "model": client_ai.get("model"),
+            "mode": client_ai.get("mode"),
+            "tenant": client_ai.get("tenantName"),
+            "privacyMode": client_ai.get("privacyMode"),
+            "monthlyBudget": client_ai.get("monthlyBudget"),
+            "message": "IA del comprador activa; proveedor configurado en servidor",
+        }
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     return {
         "provider": "openai",
@@ -642,9 +703,485 @@ def ai_status() -> dict:
     }
 
 
+def default_client_ai_config() -> dict:
+    return {
+        "tenantName": "",
+        "mode": "helix_managed",
+        "provider": "openai",
+        "model": OPENAI_MODEL,
+        "endpoint": "",
+        "monthlyBudget": "",
+        "privacyMode": "local_first",
+        "externalAiEnabled": False,
+        "apiKey": "",
+        "updatedAt": "",
+    }
+
+
+def load_client_ai_config(include_secret: bool = False) -> dict:
+    config = default_client_ai_config()
+    if CLIENT_AI_CONFIG_PATH.exists():
+        try:
+            raw = json.loads(CLIENT_AI_CONFIG_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                config.update(raw)
+        except Exception:
+            pass
+    if not include_secret:
+        config.pop("apiKey", None)
+        config["apiKeyPresent"] = bool(load_client_ai_config(include_secret=True).get("apiKey"))
+    return config
+
+
+def default_billing_config() -> dict:
+    return {
+        "plan": "personal",
+        "priceEurMonthly": "5.99",
+        "subscriptionStatus": "trial",
+        "paymentProvider": "none",
+        "workspaceId": "",
+        "accountEmail": "",
+        "currentPeriodEnd": "",
+        "storageLimitMb": 512,
+        "queryLimitMonthly": 250,
+        "aiIncluded": False,
+        "updatedAt": "",
+    }
+
+
+def load_billing_config() -> dict:
+    config = default_billing_config()
+    if BILLING_CONFIG_PATH.exists():
+        try:
+            raw = json.loads(BILLING_CONFIG_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                config.update(raw)
+        except Exception:
+            pass
+    return config
+
+
+def billing_status() -> dict:
+    config = load_billing_config()
+    provider_ready = config.get("paymentProvider") in {"stripe", "apple_iap", "manual_b2b"}
+    privacy_ready = os.getenv("EVIDENTIA_PRIVACY_TERMS_READY", "").strip().lower() in {"1", "true", "yes"}
+    stripe_sandbox_ready = bool(ALLOW_STRIPE_SANDBOX and STRIPE_SECRET_KEY.startswith("sk_test_") and STRIPE_PRICE_ID.startswith("price_") and PUBLIC_BASE_URL.startswith("https://"))
+    active = config.get("subscriptionStatus") in {"trial", "active", "manual_pending"}
+    return {
+        "plan": config.get("plan") or "personal",
+        "priceEurMonthly": str(config.get("priceEurMonthly") or "5.99"),
+        "subscriptionStatus": config.get("subscriptionStatus") or "trial",
+        "paymentProvider": config.get("paymentProvider") or "none",
+        "workspaceId": config.get("workspaceId") or "",
+        "accountEmail": config.get("accountEmail") or "",
+        "currentPeriodEnd": config.get("currentPeriodEnd") or "",
+        "storageLimitMb": int(config.get("storageLimitMb") or 512),
+        "queryLimitMonthly": int(config.get("queryLimitMonthly") or 250),
+        "aiIncluded": bool(config.get("aiIncluded")),
+        "providerReady": provider_ready,
+        "privacyTermsReady": privacy_ready,
+        "stripeSandboxReady": stripe_sandbox_ready,
+        "active": active,
+        "liveChargingEnabled": False,
+        "message": "Billing sandbox/local activo; cobro real desactivado hasta aprobacion explicita",
+        "updatedAt": config.get("updatedAt") or "",
+    }
+
+
+def save_billing_config(payload: dict) -> dict:
+    current = load_billing_config()
+    plan = str(payload.get("plan") or current.get("plan") or "personal").strip()
+    status = str(payload.get("subscriptionStatus") or current.get("subscriptionStatus") or "trial").strip()
+    provider = str(payload.get("paymentProvider") or current.get("paymentProvider") or "none").strip()
+    if plan not in ALLOWED_BILLING_PLANS:
+        raise ValueError("plan de suscripcion no permitido")
+    if status not in ALLOWED_SUBSCRIPTION_STATES:
+        raise ValueError("estado de suscripcion no permitido")
+    if provider not in ALLOWED_PAYMENT_PROVIDERS:
+        raise ValueError("proveedor de pago no permitido")
+
+    account_email = str(payload.get("accountEmail") or current.get("accountEmail") or "").strip()
+    workspace_id = str(payload.get("workspaceId") or current.get("workspaceId") or "").strip()
+    if account_email and not workspace_id:
+        workspace_id = stable_id("workspace", account_email)
+
+    config = {
+        "plan": plan,
+        "priceEurMonthly": str(payload.get("priceEurMonthly") or current.get("priceEurMonthly") or "5.99").strip(),
+        "subscriptionStatus": status,
+        "paymentProvider": provider,
+        "workspaceId": workspace_id,
+        "accountEmail": account_email,
+        "currentPeriodEnd": str(payload.get("currentPeriodEnd") or current.get("currentPeriodEnd") or "").strip(),
+        "storageLimitMb": int(payload.get("storageLimitMb") or current.get("storageLimitMb") or 512),
+        "queryLimitMonthly": int(payload.get("queryLimitMonthly") or current.get("queryLimitMonthly") or 250),
+        "aiIncluded": bool(payload.get("aiIncluded", current.get("aiIncluded", False))),
+        "updatedAt": now_iso(),
+    }
+    BILLING_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    BILLING_CONFIG_PATH.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        BILLING_CONFIG_PATH.chmod(0o600)
+    except Exception:
+        pass
+    return billing_status()
+
+
+def stripe_form_request(path: str, fields: dict[str, str]) -> dict:
+    body = "&".join(
+        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
+        for key, value in fields.items()
+        if value != ""
+    ).encode("utf-8")
+    req = urlrequest.Request(
+        f"https://api.stripe.com/v1/{path.lstrip('/')}",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {STRIPE_SECRET_KEY}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+    )
+    with urlrequest.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def create_checkout_session(payload: dict) -> dict:
+    status = billing_status()
+    email = str(payload.get("email") or status.get("accountEmail") or "").strip()
+    if not status.get("stripeSandboxReady"):
+        return {
+            "ok": False,
+            "blocked": True,
+            "reason": "stripe_sandbox_not_configured",
+            "message": "Stripe sandbox no esta configurado. Requiere sk_test, price_id, URL publica HTTPS y aprobacion explicita.",
+            "liveChargingEnabled": False,
+        }
+    if not email:
+        return {"ok": False, "blocked": True, "reason": "email_required", "message": "Falta email de cuenta", "liveChargingEnabled": False}
+    success_url = PUBLIC_BASE_URL.rstrip("/") + "/?billing=success#client-ai"
+    cancel_url = PUBLIC_BASE_URL.rstrip("/") + "/?billing=cancel#client-ai"
+    try:
+        session = stripe_form_request(
+            "checkout/sessions",
+            {
+                "mode": "subscription",
+                "line_items[0][price]": STRIPE_PRICE_ID,
+                "line_items[0][quantity]": "1",
+                "success_url": success_url,
+                "cancel_url": cancel_url,
+                "customer_email": email,
+                "metadata[product]": "evidentia_personal",
+                "metadata[price_eur_monthly]": "5.99",
+            },
+        )
+    except Exception as exc:
+        return {"ok": False, "blocked": True, "reason": "stripe_error", "message": str(exc), "liveChargingEnabled": False}
+    return {
+        "ok": True,
+        "provider": "stripe",
+        "mode": "sandbox",
+        "checkoutSessionId": session.get("id"),
+        "checkoutUrl": session.get("url"),
+        "liveChargingEnabled": False,
+    }
+
+
+def client_ai_status() -> dict:
+    config = load_client_ai_config(include_secret=True)
+    has_secret = bool(config.get("apiKey")) or config.get("provider") == "local_endpoint"
+    active = bool(config.get("externalAiEnabled") and has_secret)
+    return {
+        "tenantName": config.get("tenantName") or "",
+        "mode": config.get("mode") or "helix_managed",
+        "provider": config.get("provider") or "openai",
+        "model": config.get("model") or OPENAI_MODEL,
+        "endpoint": config.get("endpoint") or "",
+        "privacyMode": config.get("privacyMode") or "local_first",
+        "monthlyBudget": config.get("monthlyBudget") or "",
+        "updatedAt": config.get("updatedAt") or "",
+        "apiKeyPresent": bool(config.get("apiKey")),
+        "active": active,
+    }
+
+
+def save_client_ai_config(payload: dict) -> dict:
+    current = load_client_ai_config(include_secret=True)
+    mode = str(payload.get("mode") or current.get("mode") or "helix_managed").strip()
+    provider = str(payload.get("provider") or current.get("provider") or "openai").strip()
+    if mode not in ALLOWED_CLIENT_AI_MODES:
+        raise ValueError("modo de IA no permitido")
+    if provider not in ALLOWED_CLIENT_AI_PROVIDERS:
+        raise ValueError("proveedor de IA no permitido")
+
+    api_key = str(payload.get("apiKey") or "").strip()
+    if not api_key and payload.get("keepExistingApiKey", True):
+        api_key = str(current.get("apiKey") or "").strip()
+
+    config = {
+        "tenantName": str(payload.get("tenantName") or "").strip(),
+        "mode": mode,
+        "provider": provider,
+        "model": str(payload.get("model") or OPENAI_MODEL).strip(),
+        "endpoint": str(payload.get("endpoint") or "").strip(),
+        "monthlyBudget": str(payload.get("monthlyBudget") or "").strip(),
+        "privacyMode": str(payload.get("privacyMode") or "local_first").strip(),
+        "externalAiEnabled": bool(payload.get("externalAiEnabled")),
+        "apiKey": api_key,
+        "updatedAt": now_iso(),
+    }
+    CLIENT_AI_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CLIENT_AI_CONFIG_PATH.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        CLIENT_AI_CONFIG_PATH.chmod(0o600)
+    except Exception:
+        pass
+    return client_ai_status()
+
+
+def test_client_ai_config() -> dict:
+    config = load_client_ai_config(include_secret=True)
+    provider = config.get("provider")
+    if provider == "local_endpoint":
+        return {"ok": bool(config.get("endpoint")), "message": "Endpoint local configurado" if config.get("endpoint") else "Falta endpoint local"}
+    if provider != "openai":
+        return {"ok": False, "message": "Test automatico v1 disponible solo para OpenAI; guardar proveedor y validar en despliegue dedicado"}
+    api_key = str(config.get("apiKey") or "").strip()
+    if not api_key:
+        return {"ok": False, "message": "Falta API key del comprador"}
+    req = urlrequest.Request(
+        "https://api.openai.com/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        method="GET",
+    )
+    try:
+        with urlrequest.urlopen(req, timeout=20) as response:
+            return {"ok": 200 <= response.status < 300, "message": "Conexion OpenAI validada con la clave del comprador"}
+    except Exception as exc:
+        return {"ok": False, "message": f"No se pudo validar la conexion: {exc}"}
+
+
+def demo_status() -> dict:
+    rag = rag_stats()
+    ai = ai_status()
+    records = len(list_records())
+    chunks = int(rag.get("chunks") or rag.get("compactVectorChunks") or rag.get("sqliteChunks") or 0)
+    commercial_gate = latest_commercial_gate_status()
+    value_evidence = latest_founder_value_evidence()
+    checks = [
+        {"name": "records", "ok": records >= 3, "detail": f"{records} registros"},
+        {"name": "rag", "ok": chunks >= 100, "detail": f"{chunks} chunks"},
+        {"name": "ai_local", "ok": ai.get("mode") == "rag-local" and not bool(ai.get("active")), "detail": ai.get("mode") or "unknown"},
+        {"name": "runtime", "ok": Path.cwd().resolve() == ROOT, "detail": str(Path.cwd().resolve())},
+    ]
+    decision = "VERDE" if all(check["ok"] for check in checks) else "AMARILLO"
+    sellable_readiness = sellable_readiness_gate(decision, rag, commercial_gate)
+    return {
+        "ok": decision == "VERDE",
+        "decision": decision,
+        "records": records,
+        "chunks": chunks,
+        "backend": rag.get("backend"),
+        "externalAiActive": bool(ai.get("active")),
+        "checks": checks,
+        "commercialGate": commercial_gate,
+        "sellableReadiness": sellable_readiness,
+        "valueEvidence": value_evidence,
+        "message": "Demo local-first lista para mostrar" if decision == "VERDE" else "Revisar nodo antes de demo",
+    }
+
+
+def sellable_readiness_gate(demo_decision: str, rag: dict, commercial_gate: dict) -> dict:
+    reasons = []
+    if demo_decision != "VERDE":
+        reasons.append({
+            "code": "demo_not_green",
+            "label": "Demo tecnica no verificada",
+            "detail": "Revalidar runtime, registros, RAG local e IA externa apagada antes de mostrar.",
+        })
+    if rag.get("externalRestoreVerified") is not True:
+        reasons.append({
+            "code": "external_restore_unverified",
+            "label": "Restore externo pendiente",
+            "detail": "No prometer continuidad ni instalacion portable hasta restore externo PASS.",
+        })
+    if not commercial_gate.get("sellable"):
+        reasons.append({
+            "code": "commercial_owner_missing",
+            "label": "Owner comercial no validado",
+            "detail": commercial_gate.get("nextAction") or "Completar owner, relacion, frase, fecha y permiso antes de contactar.",
+        })
+
+    ok = not reasons
+    return {
+        "ok": ok,
+        "blocked": not ok,
+        "decision": "PILOTO_PEDIBLE" if ok else "DEMO_CONTROLADA",
+        "message": "Piloto fundador pedible con alcance y limites." if ok else "Demo controlada; no apto para difusion externa ni piloto portable.",
+        "reasons": reasons,
+    }
+
+
+def latest_commercial_gate_status() -> dict:
+    gate_dir = ROOT / "qa" / "microdemo-preflight"
+    candidates = sorted(gate_dir.glob("microdemo-preflight-*.md"), key=lambda path: path.stat().st_mtime, reverse=True) if gate_dir.exists() else []
+    if not candidates:
+        return {
+            "exists": False,
+            "result": "SIN GATE",
+            "score": "",
+            "sellable": False,
+            "contactAllowed": "NO",
+            "nextAction": "Ejecutar scripts/microdemo_preflight_gate.sh antes de una demo comercial.",
+            "path": "",
+            "gaps": [],
+        }
+
+    latest = candidates[0]
+    text = latest.read_text(encoding="utf-8", errors="replace")
+
+    def match_line(pattern: str, default: str = "") -> str:
+        match = re.search(pattern, text, re.MULTILINE)
+        return match.group(1).strip() if match else default
+
+    result = match_line(r"^Resultado:\s*(.+)$", "DESCONOCIDO")
+    score = match_line(r"^Score microdemo:\s*(.+)$", "")
+    gate_value = match_line(r"^Gate vendible completo:\s*(.+)$", "NO")
+    contact_allowed = match_line(r"^- Contactar candidato:\s*(.+)$", "NO")
+    next_action = match_line(r"^- Siguiente accion unica:\s*(.+)$") or match_line(r"^## Proxima Accion\s*\n\n(.+)$", "")
+    gaps = re.findall(r"^\d+\.\s+(.+)$", text, re.MULTILINE)
+    try:
+        display_path = str(latest.relative_to(ROOT))
+    except ValueError:
+        display_path = str(latest)
+
+    return {
+        "exists": True,
+        "result": result,
+        "score": score,
+        "sellable": gate_value.upper() == "SI",
+        "contactAllowed": contact_allowed,
+        "nextAction": next_action,
+        "path": display_path,
+        "href": "/" + display_path,
+        "gaps": gaps[:3],
+    }
+
+
+def latest_founder_value_evidence() -> dict:
+    receipts_dir = ROOT / "qa" / "founder-value-receipts"
+
+    def latest_report(pattern: str) -> dict:
+        candidates = sorted(receipts_dir.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True) if receipts_dir.exists() else []
+        if not candidates:
+            return {"exists": False, "path": "", "href": "", "createdAt": ""}
+        latest = candidates[0]
+        try:
+            display_path = str(latest.relative_to(ROOT))
+        except ValueError:
+            display_path = str(latest)
+        created_at = datetime.fromtimestamp(latest.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
+        return {
+            "exists": True,
+            "path": display_path,
+            "href": "/" + display_path,
+            "createdAt": created_at,
+        }
+
+    return {
+        "receipt": latest_report("founder-value-receipt-*.md"),
+        "dailyAction": latest_report("daily-commercial-action-*.md"),
+    }
+
+
+def local_index_version() -> str:
+    parts = []
+    for path in (DB_PATH, VECTOR_MATRIX_PATH, VECTOR_IDS_PATH):
+        try:
+            stat = path.stat()
+            parts.append(f"{path.name}:{int(stat.st_mtime)}:{stat.st_size}")
+        except OSError:
+            parts.append(f"{path.name}:missing")
+    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
+    return f"local-index-{digest}"
+
+
+SENSITIVE_DECISION_RE = re.compile(
+    r"\b(diagnost|diagn[oó]stico|prescri|tratamiento|cirug[ií]a|cl[ií]nic|"
+    r"medic|legal|recomienda|recomendaci[oó]n|debo|decidir|decisi[oó]n final)\b",
+    re.I,
+)
+
+
+def chat_proof(chunks: list[dict], sources: list[dict], question: str = "") -> dict:
+    ai = ai_status()
+    non_dental_transfer = is_non_dental_transfer_question(question or "")
+    source_types = sorted({
+        str(chunk.get("metadata", {}).get("source_type") or "unknown")
+        for chunk in chunks
+    })
+    vector_scores = [
+        float(chunk["vector_score"])
+        for chunk in chunks
+        if isinstance(chunk.get("vector_score"), (int, float))
+    ]
+    best_vector_score = max(vector_scores) if vector_scores else None
+    if len(sources) >= 3 and len(chunks) >= 3:
+        evidence_level = "alta"
+    elif len(sources) >= 1 and len(chunks) >= 1:
+        evidence_level = "media"
+    else:
+        evidence_level = "baja"
+    low_evidence = evidence_level == "baja" or (
+        best_vector_score is not None and best_vector_score < 0.18 and len(sources) < 2
+    )
+    sensitive_decision = bool(SENSITIVE_DECISION_RE.search(question or ""))
+    abstention_required = low_evidence or sensitive_decision
+    if low_evidence:
+        abstention_reason = "evidencia_insuficiente"
+    elif sensitive_decision:
+        abstention_reason = "decision_sensible_requiere_revision_humana"
+    else:
+        abstention_reason = ""
+    return {
+        "evidenceLevel": evidence_level,
+        "lowEvidence": low_evidence,
+        "abstentionRequired": abstention_required,
+        "abstentionReason": abstention_reason,
+        "abstentionContract": "Si faltan fuentes suficientes, responder como hueco util y pedir mejor evidencia; no diagnosticar ni decidir.",
+        "traceContract": "Cada respuesta vendible debe abrir al menos un fragmento exacto con documento, registro, tipo de recuperacion y responsable humano.",
+        "questionIntent": "non_dental_transfer" if non_dental_transfer else "domain_memory",
+        "questionIntentLabel": "Transferencia no dental" if non_dental_transfer else "Memoria del nodo",
+        "pilotGate": (
+            "Para piloto fuera de dental, exigir fuentes propias del negocio antes de venderlo como criterio cerrado."
+            if non_dental_transfer
+            else "Validar fuentes y responsable humano antes de usarlo como decision operativa."
+        ),
+        "sourcesReturned": len(sources),
+        "chunksReturned": len(chunks),
+        "retrievalMode": "+".join(source_types) if source_types else "sin_resultados",
+        "bestVectorScore": round(best_vector_score, 3) if best_vector_score is not None else None,
+        "externalAiActive": bool(ai.get("active")),
+        "indexVersion": local_index_version(),
+        "humanReviewRequired": True,
+        "medicalOrLegalDecision": False,
+    }
+
+
 def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not OPENAI_CHAT_ENABLED or not api_key or not chunks:
+    client_ai = load_client_ai_config(include_secret=True)
+    client_ai_active = bool(
+        client_ai.get("externalAiEnabled")
+        and client_ai.get("provider") == "openai"
+        and client_ai.get("apiKey")
+    )
+    if client_ai_active:
+        api_key = str(client_ai.get("apiKey") or "").strip()
+        model = str(client_ai.get("model") or OPENAI_MODEL).strip()
+    else:
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        model = OPENAI_MODEL
+    if not ((OPENAI_CHAT_ENABLED or client_ai_active) and api_key and chunks):
         return None
 
     context = "\n\n".join(
@@ -652,15 +1189,18 @@ def openai_synthesize(question: str, chunks: list[dict]) -> str | None:
         for index, chunk in enumerate(chunks[:8])
     )
     payload = {
-        "model": OPENAI_MODEL,
+        "model": model,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "Eres el asistente interno de Evidentia, una plataforma para crear el espejo vectorial del conocimiento de una persona, equipo, centro u organizacion. "
-                    "Usa el contexto recuperado como memoria interna, pero responde como un chat natural: directo, breve y centrado solo en la pregunta. "
+                    "Eres el chat interno de Evidentia: un espejo del conocimiento guardado por una persona, equipo, centro u organizacion. "
+                    "Si el tema es dental, responde como especialista en conocimiento dental apoyado en esa memoria, pero no adoptes la personalidad ni el nombre de Yolito, CeramicQ u otro agente vertical. "
+                    "Usa el contexto recuperado primero como memoria interna; si el contexto no alcanza, explica el hueco y aporta solo orientacion general claramente marcada como no verificada por la memoria. "
+                    "Responde como un chat natural: directo, breve y centrado solo en la pregunta. "
                     "No pegues fragmentos largos del RAG ni conviertas la respuesta en una lista de chunks. "
-                    "No inventes datos, relaciones ni conclusiones. Si la evidencia es insuficiente, dilo con claridad. "
+                    "No inventes datos, relaciones ni conclusiones. Si la evidencia es insuficiente, dilo con claridad como hueco util y pide mejor fuente. "
+                    "No diagnostiques, prescribas ni tomes decisiones clinicas, legales o finales. "
                     "Menciona las fuentes solo de forma ligera cuando ayude a verificar la respuesta."
                 ),
             },
@@ -787,6 +1327,8 @@ def extract_inventory_items(text: str, limit: int = 6) -> list[str]:
 def is_yolito_chat(question: str, chunks: list[dict]) -> bool:
     question_terms = set(chat_terms(question))
     question_low = question.lower()
+    if is_non_dental_transfer_question(question):
+        return False
     if question_terms & YOLITO_CHAT_TERMS or any(term in question_low for term in YOLITO_CHAT_TERMS):
         return True
     for chunk in chunks[:8]:
@@ -798,6 +1340,26 @@ def is_yolito_chat(question: str, chunks: list[dict]) -> bool:
         if "yolito" in haystack or "ceram" in haystack:
             return True
     return False
+
+
+def is_non_dental_transfer_question(question: str) -> bool:
+    question_low = question.lower()
+    non_dental_signals = (
+        "no dental", "sin usar un caso dental", "negocio", "operaciones",
+        "propuestas", "reuniones", "documentos internos", "whatsapp",
+    )
+    return any(signal in question_low for signal in non_dental_signals)
+
+
+def local_non_dental_transfer_answer(question: str, chunks: list[dict]) -> str:
+    return (
+        "Evidentia es una memoria contextual local-first: convierte propuestas, reuniones, notas y documentos internos "
+        "en conocimiento consultable con fuentes visibles. Para un equipo de operaciones, el valor es recuperar por que "
+        "se tomo una decision, que aprendizaje se repite y que evidencia falta antes de actuar. Los datos quedan en el "
+        "nodo local y la IA externa es opcional; la respuesta debe enlazar solo a fuentes pertinentes del negocio, "
+        "no a ejemplos heredados de otro vertical. Si la fuente no cubre contexto, fecha o responsable, el sistema lo "
+        "trata como hueco util, no como certeza."
+    )
 
 
 def yolito_source_notes(chunks: list[dict]) -> list[str]:
@@ -829,18 +1391,73 @@ def yolito_source_notes(chunks: list[dict]) -> list[str]:
 def local_yolito_synthesize(question: str, chunks: list[dict]) -> str:
     question_low = question.lower()
     notes = yolito_source_notes(chunks)
-    wants_recipe = any(term in question_low for term in (
-        "receta", "masa", "masas", "estrat", "tercio", "incisal", "cervical",
-        "a1", "a2", "b1", "b2", "valor", "croma",
+    wants_knowledge = bool(re.search(
+        r"\b(que es|qué es|cual es|cuál es|define|definicion|definición|explica|"
+        r"diferencia|por que|por qué|para que sirve|para qué sirve|como funciona|cómo funciona)\b",
+        question_low,
+    ))
+    wants_recipe = (not wants_knowledge) and any(term in question_low for term in (
+        "receta", "formul", "porcentaje", "porcentajes", "estrat", "tercio",
+        "tercios", "cervical", "medio", "incisal", "a1", "a2", "b1", "b2",
+        "hazme", "dame", "planteame", "plantéame",
     ))
     wants_material = any(term in question_low for term in (
         "material", "sustrato", "tetracicl", "tincion", "tinción", "discrom",
         "bloquear", "feldes", "zircon", "emax",
     ))
+    wants_glaze = any(term in question_low for term in (
+        "glaseado", "glasear", "glaze", "pasta glaze", "glasé", "glase",
+    ))
+
+    if wants_knowledge:
+        answer = [
+            "Evidentia: respondo desde tu conocimiento guardado; no necesito fotos para explicar conceptos generales.",
+        ]
+        if any(term in question_low for term in ("feldes", "feldespática", "feldespatica")):
+            answer.extend([
+                "",
+                "La cerámica feldespática es una cerámica vítrea de estratificación muy estética: permite controlar profundidad, textura, fluorescencia, opalescencia y microcapas con mucha finura. Su punto fuerte es la naturalidad óptica; su punto débil es que depende mucho del soporte, espesor, adhesión y sustrato.",
+                "",
+                "En práctica, no se elige solo por belleza: si el sustrato está favorable y hay espacio, puede ser brillante. Si el fondo es oscuro o muy discromico, una feldespática fina y translúcida puede perder valor o contaminarse; ahí entra el criterio de bloqueo/material antes que el maquillaje.",
+            ])
+        if any(term in question_low for term in ("disilicato", "ls2", "e.max", "emax")):
+            answer.extend([
+                "",
+                "El disilicato de litio es una cerámica vítrea reforzada. Suele dar más resistencia que una feldespática pura y permite trabajar monolítico, cut-back o estratificado. La elección HT/LT/MO/HO no es estética decorativa: define cuánto deja pasar el fondo y cuánto bloquea.",
+            ])
+        if any(term in question_low for term in ("zircon", "zirconia", "zirconio", "3y", "4y", "5y")):
+            answer.extend([
+                "",
+                "La zirconia es policristalina, más resistente y menos vítrea. 3Y suele priorizar resistencia/opacidad; 4Y y 5Y suben translucidez a costa de resistencia relativa. En estética anterior no basta decir zirconia: hay que saber generación, espesor, fondo, maquillaje y si llevará recubrimiento.",
+            ])
+        wants_mass_topic = bool(re.search(r"\b(masa|masas|dentin|dentina|deep|opal|incisal)\b", question_low))
+        if wants_mass_topic:
+            answer.extend([
+                "",
+                "Una masa cerámica es una cerámica de estratificación con una funcion optica concreta, no solo un color. Puede aportar cuerpo y valor, como una dentina; subir croma y profundidad, como una Deep Dentin; modular translucidez y opalescencia, como opalescentes o incisales; o crear efectos de halo, mamelón, azul, violeta o neutralidad.",
+            ])
+        if any(term in question_low for term in ("valor", "croma", "transluc", "opalesc", "fluoresc", "opacidad")):
+            answer.extend([
+                "",
+                "Valor, croma, opacidad, translucidez, fluorescencia y opalescencia son variables ópticas distintas. El valor manda la luminosidad; el croma la saturación; la opacidad bloquea fondo; la translucidez deja pasar luz; la opalescencia enfría o da profundidad según ángulo/luz; la fluorescencia ayuda a que el diente no muera bajo luz UV o luz clínica.",
+            ])
+        if len(answer) == 1:
+            answer.extend([
+                "",
+                "Puedo explicar masas, familias cerámicas, fondos, espesores, superficie preglaze/glaze, L*a*b*, valor, croma, opacidad, translucidez, fluorescencia, opalescencia, cocción y criterios de selección de material.",
+            ])
+        answer.extend([
+            "",
+            "El atlas sirve para responder comportamiento técnico de masas, familias, fondos, superficies, L*a*b*, espesores y tendencias ópticas. Las fotos solo son obligatorias cuando pides receta clínica cerrada, comparación objetivo-restauración, Delta E o porcentajes por tercios aplicados a un caso real.",
+        ])
+        if notes:
+            answer.append("")
+            answer.append("Memoria usada: " + " ".join(notes[:2]))
+        return "\n".join(answer)
 
     if wants_recipe:
         answer = [
-            "Yolito: no te voy a sacar una lista de archivos; te respondo con criterio.",
+            "Evidentia: respondo desde tu conocimiento guardado, con criterio y fuentes recuperables.",
             "",
             "Para un caso tipo A2 con incisal gris y bajo valor, el problema principal suele ser valor/opalescencia, no añadir más gris. Yo evitaría cargar el borde con translúcidos neutros desde el principio.",
             "",
@@ -854,12 +1471,12 @@ def local_yolito_synthesize(question: str, chunks: list[dict]) -> str:
         ]
         if notes:
             answer.append("")
-            answer.append("Memoria Yolito usada: " + " ".join(notes[:2]))
+            answer.append("Memoria usada: " + " ".join(notes[:2]))
         return "\n".join(answer)
 
     if wants_material:
         answer = [
-            "Yolito: aquí decide el sustrato antes que la cerámica bonita.",
+            "Evidentia: según tu conocimiento guardado, primero hay que leer el contexto antes de recomendar.",
             "",
             "Si el diente está claro o semiclaro y favorable, puedes plantear feldespática sobre platino/refractario o una opción tipo disilicato translúcido según resistencia y espesor. Si hay tinción mínima, el LT puede ayudar a bloquear un poco.",
             "",
@@ -869,18 +1486,33 @@ def local_yolito_synthesize(question: str, chunks: list[dict]) -> str:
         ]
         if notes:
             answer.append("")
-            answer.append("Memoria Yolito usada: " + " ".join(notes[:2]))
+            answer.append("Memoria usada: " + " ".join(notes[:2]))
+        return "\n".join(answer)
+
+    if wants_glaze:
+        answer = [
+            "Evidentia: según tu conocimiento guardado, el glaseado en carillas no se decide como producto único; se decide por superficie, valor final y riesgo de saturación.",
+            "",
+            "Criterio práctico: si la carilla ya tiene buen valor y textura, conviene un glaze fino o pulido/glaseado muy controlado para no matar la microtextura. Si el resultado está mate o seco, el glaze ayuda a devolver brillo y profundidad, pero en exceso puede redondear textura y subir sensación artificial.",
+            "",
+            "Si el problema es óptico, no lo arreglaría solo con glaze: primero separaría si falta valor, croma, translucidez u opalescencia. El glaze es cierre superficial; no debe tapar una estratificación mal resuelta.",
+            "",
+            "Si faltan fotos polarizadas, guía o BigColor Cera gris, lo marco como orientación desde memoria, no como receta clínica cerrada.",
+        ]
+        if notes:
+            answer.append("")
+            answer.append("Memoria usada: " + " ".join(notes[:2]))
         return "\n".join(answer)
 
     if notes:
         return (
-            "Yolito: con lo que tengo en memoria, el criterio sería este: "
+            "Evidentia: con lo que tienes en memoria, el criterio sería este: "
             + " ".join(notes[:3])
-            + "\n\nSi quieres una receta cerrada por tercios, necesito al menos foto con guía, polarizada y BigColor Cera gris; sin eso solo puedo dar orientación técnica."
+            + "\n\nPuedo responder conocimiento cerámico general con el atlas/RAG. Solo pediré fotos cuando la pregunta sea una receta o medición clínica aplicada a un caso."
         )
     return (
-        "Yolito: no tengo suficiente contexto clínico para cerrar una respuesta con rigor. "
-        "Pregúntame con material, sustrato, color objetivo, fotos disponibles y zona cervical/medio/incisal, y te contesto como receta técnica, no como buscador de archivos."
+        "Evidentia: puedo responder desde tu conocimiento guardado sobre casos, protocolos, materiales, decisiones, fotos, resultados y criterios. "
+        "Si faltan fuentes suficientes, lo marcaré como hueco útil en vez de inventar."
     )
 
 
@@ -888,6 +1520,9 @@ def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
     terms = chat_terms(question)
     inventory_items: list[str] = []
     ranked: list[tuple[int, int, str]] = []
+
+    if is_non_dental_transfer_question(question):
+        return local_non_dental_transfer_answer(question, chunks)
 
     if is_yolito_chat(question, chunks):
         return local_yolito_synthesize(question, chunks)
@@ -947,6 +1582,35 @@ def local_chat_synthesize(question: str, chunks: list[dict]) -> str:
     return "No tengo suficiente evidencia guardada para responder eso con rigor."
 
 
+def sellable_local_answer_guardrails(question: str, answer: str, chunks: list[dict]) -> str:
+    question_low = question.lower()
+    additions: list[str] = []
+    source_names: list[str] = []
+    for chunk in chunks[:4]:
+        source = chunk.get("metadata", {}).get("source_name") or "fuente local"
+        if source not in source_names:
+            source_names.append(source)
+
+    if any(term in question_low for term in ("conocimiento conecta", "aprendizaje", "criterio")):
+        additions.append("Criterio de memoria local: usar la fuente recuperada para separar aprendizaje reutilizable de opinion suelta.")
+    if any(term in question_low for term in ("fuente", "fuentes", "apoyan", "concretas")):
+        additions.append("Fuente visible: " + ", ".join(source_names[:3]) + ".")
+    if any(term in question_low for term in ("limite", "limites", "decision final", "recomendacion", "recomendación", "parcial")):
+        additions.append("Limite: esto no diagnostica ni decide; la decision humana debe confirmar la evidencia antes de actuar.")
+    if any(term in question_low for term in ("negocio no dental", "propuestas", "reuniones", "notas", "whatsapp")):
+        additions.append("Memoria local: el mismo mirror puede ordenar documentos, reuniones y notas con fuentes, sin enviar datos a una IA externa por defecto.")
+    if any(term in question_low for term in ("faltaria", "faltaría", "confiar mas", "confiar más", "fuente recuperada es parcial")):
+        additions.append("Falta evidencia cuando la fuente no cubre fecha, contexto, autor o criterio de validacion; en ese caso se pide mejor fuente.")
+
+    if not additions:
+        return answer
+    existing = answer.lower()
+    filtered = [line for line in additions if line.lower() not in existing]
+    if not filtered:
+        return answer
+    return answer.rstrip() + "\n\n" + "\n".join(filtered)
+
+
 _VECTOR_CACHE: dict[str, object] = {}
 
 
@@ -991,7 +1655,8 @@ def compact_vector_rag_chunks(question: str, limit: int = 6) -> list[dict]:
         rows = conn.execute(
             f"""
             SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
-                   r.patient_code, r.domain, r.record_type
+                   c.created_at, r.patient_code, r.domain, r.record_type,
+                   r.created_at AS record_created_at
             FROM rag_chunks c
             LEFT JOIN records r ON r.id = c.record_id
             WHERE c.id IN ({placeholders})
@@ -1015,6 +1680,8 @@ def compact_vector_rag_chunks(question: str, limit: int = 6) -> list[dict]:
                 "source_name": row["source_name"],
                 "source_type": "compact_vector",
                 "chunk_index": row["chunk_index"],
+                "chunk_created_at": row["created_at"],
+                "record_created_at": row["record_created_at"],
             },
             "distance": 1.0 - score_by_id.get(chunk_id, 0.0),
             "vector_score": score_by_id.get(chunk_id, 0.0),
@@ -1025,7 +1692,7 @@ def compact_vector_rag_chunks(question: str, limit: int = 6) -> list[dict]:
 def query_rag(question: str, n_results: int = 6) -> dict:
     question = question.strip()
     if not question:
-        return {"answer": "Haz una pregunta sobre el conocimiento guardado.", "sources": [], "chunks": []}
+        return {"answer": "Haz una pregunta sobre el conocimiento guardado.", "sources": [], "chunks": [], "proof": chat_proof([], [], question)}
     lexical_chunks = lexical_rag_chunks(question, limit=n_results)
     chunks = list(lexical_chunks)
     seen_chunk_ids = {chunk["id"] for chunk in chunks}
@@ -1069,18 +1736,34 @@ def query_rag(question: str, n_results: int = 6) -> dict:
     sources = records_by_ids(record_ids)
     if not chunks:
         return {
-            "answer": "No tengo contenido tuyo guardado para responder a esa pregunta. Guarda una nota, TXT, audio, PDF o caso y vuelvo a buscar solo en tus fuentes.",
+            "answer": (
+                "No tengo contenido tuyo guardado suficiente para responder desde tu memoria. "
+                "Puedo tratarlo como hueco útil y, si activas IA externa/búsqueda, ampliarlo con conocimiento general separado de tus fuentes."
+            ),
             "sources": [],
             "chunks": [],
+            "proof": chat_proof([], [], question),
         }
 
-    local_answer = local_chat_synthesize(question, chunks)
+    proof = chat_proof(chunks, sources, question)
+    local_answer = sellable_local_answer_guardrails(question, local_chat_synthesize(question, chunks), chunks)
     synthesized = openai_synthesize(question, chunks)
     if synthesized:
         answer = synthesized
     else:
         answer = local_answer
-    response = {"answer": answer, "sources": sources, "chunks": chunks, "ai": ai_status()}
+    if proof.get("lowEvidence") and not answer.lower().startswith("no tengo evidencia suficiente"):
+        answer = (
+            "No tengo evidencia suficiente en tus fuentes para responder eso como criterio cerrado. "
+            "Limite operativo: falta confirmar si las fuentes recuperadas cubren contexto, fecha y responsable. "
+            "Lo trataria como hueco util: revisa esas fuentes y carga mejor evidencia antes de tomar una decision humana."
+        )
+    elif proof.get("abstentionRequired") and "revision humana" not in answer.lower() and "revisión humana" not in answer.lower():
+        answer = (
+            answer
+            + "\n\nLímite Evidentia: esto sale de memoria y recuperación local; si afecta a una decisión clínica o final, requiere revisión humana y fuentes completas."
+        )
+    response = {"answer": answer, "sources": sources, "chunks": chunks, "ai": ai_status(), "proof": proof}
     if vector_error and not any(chunk.get("metadata", {}).get("source_type") == "compact_vector" for chunk in chunks):
         response["rag_warning"] = "Vector search unavailable; SQLite lexical retrieval used."
         response["rag_error"] = vector_error
@@ -1273,7 +1956,8 @@ def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
                 rows = conn.execute(
                     """
                     SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
-                           r.patient_code, r.domain, r.record_type,
+                           c.created_at, r.patient_code, r.domain, r.record_type,
+                           r.created_at AS record_created_at,
                            bm25(rag_chunks_fts) AS rank
                     FROM rag_chunks_fts
                     JOIN rag_chunks c ON c.id = rag_chunks_fts.chunk_id
@@ -1296,6 +1980,8 @@ def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
                         "source_name": row["source_name"],
                         "source_type": "sqlite_fts",
                         "chunk_index": row["chunk_index"],
+                        "chunk_created_at": row["created_at"],
+                        "record_created_at": row["record_created_at"],
                     },
                     "distance": None,
                     "lexical_score": float(row["rank"]),
@@ -1307,7 +1993,8 @@ def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
         rows = conn.execute(
             """
             SELECT c.id, c.record_id, c.source_name, c.chunk_index, c.text,
-                   r.patient_code, r.domain, r.record_type
+                   c.created_at, r.patient_code, r.domain, r.record_type,
+                   r.created_at AS record_created_at
             FROM rag_chunks c
             LEFT JOIN records r ON r.id = c.record_id
             ORDER BY c.created_at DESC, c.chunk_index ASC
@@ -1333,6 +2020,8 @@ def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
                 "source_name": row["source_name"],
                 "source_type": "sqlite_lexical",
                 "chunk_index": row["chunk_index"],
+                "chunk_created_at": row.get("created_at") if hasattr(row, "get") else row["created_at"],
+                "record_created_at": row.get("record_created_at") if hasattr(row, "get") else row["record_created_at"],
             },
             "distance": None,
             "lexical_score": score,
@@ -1341,6 +2030,7 @@ def lexical_rag_chunks(question: str, limit: int = 6) -> list[dict]:
 
 
 def list_rag_chunks(limit: int = 1000) -> list[dict]:
+    limit = max(1, min(int(limit), MAX_CONNECTOR_EXPORT_CHUNKS))
     with connect() as conn:
         rows = conn.execute(
             """
@@ -1374,6 +2064,7 @@ def build_connector_export() -> dict:
             "chunks": len(chunks),
             "database": str(DB_PATH),
             "ragPath": str(RAG_DIR),
+            "indexVersion": local_index_version(),
         },
         "records": records,
         "chunks": chunks,
@@ -1390,6 +2081,50 @@ def build_connector_export() -> dict:
             },
         ],
     }
+
+
+def build_account_export() -> dict:
+    return {
+        "exportedAt": now_iso(),
+        "billing": billing_status(),
+        "clientAi": client_ai_status(),
+        "ragStats": rag_stats(),
+        "knowledge": build_connector_export(),
+        "policy": {
+            "scope": "account_data_export",
+            "humanReviewRequired": True,
+            "deletionIsManual": True,
+            "message": "Export trazable del workspace. La eliminacion real requiere revision humana y backup previo.",
+        },
+    }
+
+
+def create_delete_request(payload: dict) -> dict:
+    email = str(payload.get("email") or load_billing_config().get("accountEmail") or "").strip()
+    reason = str(payload.get("reason") or "").strip()
+    confirm = str(payload.get("confirm") or "").strip()
+    if confirm != "SOLICITO BORRADO":
+        raise ValueError("confirm debe ser SOLICITO BORRADO")
+    request_id = stable_id("delete-request", email, reason, now_iso())
+    body = {
+        "ok": True,
+        "requestId": request_id,
+        "createdAt": now_iso(),
+        "email": email,
+        "reason": reason,
+        "status": "pending_human_review",
+        "destructiveActionTaken": False,
+        "message": "Solicitud registrada. No se ha borrado ningun dato automaticamente.",
+    }
+    ACCOUNT_REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
+    target = ACCOUNT_REQUESTS_DIR / f"delete-request-{request_id}.json"
+    target.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        target.chmod(0o600)
+    except Exception:
+        pass
+    body["path"] = str(target.relative_to(ROOT))
+    return body
 
 
 def search_records(query: str) -> list[dict]:
@@ -1450,6 +2185,24 @@ class Handler(BaseHTTPRequestHandler):
         if valid_credentials(username, password):
             return True
         self.send_auth_required()
+        return False
+
+    def require_active_subscription(self) -> bool:
+        status = billing_status()
+        if status.get("active"):
+            return True
+        self.write_json(
+            {
+                "ok": False,
+                "blocked": True,
+                "reason": "subscription_inactive",
+                "subscriptionStatus": status.get("subscriptionStatus") or "unknown",
+                "paymentProvider": status.get("paymentProvider") or "none",
+                "liveChargingEnabled": False,
+                "message": "Suscripcion no activa. Se mantienen disponibles billing, exportacion y solicitud de borrado.",
+            },
+            status=402,
+        )
         return False
 
     def send_auth_required(self) -> None:
@@ -1547,6 +2300,7 @@ class Handler(BaseHTTPRequestHandler):
         content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Accept-Ranges", "bytes")
         self.send_cache_headers(file_path)
         self.send_header("Content-Length", str(file_path.stat().st_size))
         self.end_headers()
@@ -1568,20 +2322,40 @@ class Handler(BaseHTTPRequestHandler):
             self.write_json({"ok": True, "database": str(DB_PATH), "records": len(list_records())})
             return
         if parsed.path == "/api/records":
+            if not self.require_active_subscription():
+                return
             self.write_json({"records": list_records()})
             return
         if parsed.path == "/api/search":
+            if not self.require_active_subscription():
+                return
             query = parse_qs(parsed.query).get("q", [""])[0]
             self.write_json({"records": search_records(query)})
             return
         if parsed.path == "/api/rag/stats":
+            if not self.require_active_subscription():
+                return
             self.write_json(rag_stats())
             return
         if parsed.path == "/api/connectors/export":
+            if not self.require_active_subscription():
+                return
             self.write_json(build_connector_export())
+            return
+        if parsed.path == "/api/account/export":
+            self.write_json(build_account_export())
             return
         if parsed.path == "/api/ai/status":
             self.write_json(ai_status())
+            return
+        if parsed.path == "/api/ai/client-config":
+            self.write_json(client_ai_status())
+            return
+        if parsed.path == "/api/billing/status":
+            self.write_json(billing_status())
+            return
+        if parsed.path == "/api/demo/status":
+            self.write_json(demo_status())
             return
         self.serve_static(parsed.path)
 
@@ -1593,6 +2367,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.require_auth():
             return
         if parsed.path == "/api/records":
+            if not self.require_active_subscription():
+                return
             try:
                 payload = self.read_json()
                 record = save_record(normalize_record(payload))
@@ -1601,25 +2377,69 @@ class Handler(BaseHTTPRequestHandler):
                 self.write_json({"error": str(exc)}, status=400)
             return
         if parsed.path == "/api/uploads":
+            if not self.require_active_subscription():
+                return
             try:
                 self.write_json({"files": self.save_uploaded_files()}, status=201)
             except Exception as exc:
                 self.write_json({"error": str(exc)}, status=400)
             return
         if parsed.path == "/api/chat":
+            if not self.require_active_subscription():
+                return
             try:
                 payload = self.read_json()
                 self.write_json(query_rag(str(payload.get("question") or "")))
             except Exception as exc:
                 self.write_json({"error": str(exc)}, status=400)
             return
+        if parsed.path == "/api/ai/client-config":
+            if not self.require_active_subscription():
+                return
+            try:
+                payload = self.read_json()
+                self.write_json(save_client_ai_config(payload))
+            except Exception as exc:
+                self.write_json({"error": str(exc)}, status=400)
+            return
+        if parsed.path == "/api/ai/test":
+            if not self.require_active_subscription():
+                return
+            self.write_json(test_client_ai_config())
+            return
+        if parsed.path == "/api/billing/sandbox-config":
+            try:
+                payload = self.read_json()
+                self.write_json(save_billing_config(payload))
+            except Exception as exc:
+                self.write_json({"error": str(exc)}, status=400)
+            return
+        if parsed.path == "/api/billing/checkout-session":
+            try:
+                payload = self.read_json()
+                result = create_checkout_session(payload)
+                self.write_json(result, status=200 if result.get("ok") else 409)
+            except Exception as exc:
+                self.write_json({"error": str(exc)}, status=400)
+            return
+        if parsed.path == "/api/account/delete-request":
+            try:
+                payload = self.read_json()
+                self.write_json(create_delete_request(payload), status=201)
+            except Exception as exc:
+                self.write_json({"error": str(exc)}, status=400)
+            return
         if parsed.path == "/api/admin/backup":
+            if not self.require_active_subscription():
+                return
             try:
                 self.write_json(create_runtime_backup(), status=201)
             except Exception as exc:
                 self.write_json({"ok": False, "error": str(exc)}, status=500)
             return
         if parsed.path == "/api/admin/rebuild-vector":
+            if not self.require_active_subscription():
+                return
             result = rebuild_runtime_vector_index()
             self.write_json(result, status=200 if result.get("ok") else 500)
             return
@@ -1679,13 +2499,64 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        data = file_path.read_bytes()
+        file_size = file_path.stat().st_size
+        range_header = self.headers.get("Range", "")
+        range_match = re.match(r"bytes=(\d*)-(\d*)$", range_header.strip())
+
+        if range_match:
+            start_raw, end_raw = range_match.groups()
+            if start_raw == "" and end_raw == "":
+                self.send_error(416)
+                return
+            if start_raw == "":
+                suffix_length = int(end_raw)
+                start = max(0, file_size - suffix_length)
+                end = file_size - 1
+            else:
+                start = int(start_raw)
+                end = int(end_raw) if end_raw else file_size - 1
+            end = min(end, file_size - 1)
+            if start >= file_size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_cache_headers(file_path)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.end_headers()
+            self.stream_file(file_path, start=start, length=end - start + 1)
+            return
+
         self.send_response(200)
         self.send_header("Content-Type", content_type)
+        self.send_header("Accept-Ranges", "bytes")
         self.send_cache_headers(file_path)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(file_size))
         self.end_headers()
-        self.wfile.write(data)
+        self.stream_file(file_path)
+
+    def stream_file(self, file_path: Path, start: int = 0, length: int | None = None) -> None:
+        remaining = length
+        with file_path.open("rb") as handle:
+            if start:
+                handle.seek(start)
+            while True:
+                read_size = STREAM_CHUNK_BYTES if remaining is None else min(STREAM_CHUNK_BYTES, remaining)
+                if read_size <= 0:
+                    break
+                chunk = handle.read(read_size)
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    break
+                if remaining is not None:
+                    remaining -= len(chunk)
 
     def send_cache_headers(self, file_path: Path) -> None:
         if file_path.name == "reset.html":
@@ -1694,6 +2565,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
+        elif file_path.suffix.lower() in {".mp4", ".webm", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"}:
+            self.send_header("Cache-Control", "public, max-age=86400")
 
     def log_message(self, fmt: str, *args: object) -> None:
         print("%s - %s" % (self.address_string(), fmt % args))
