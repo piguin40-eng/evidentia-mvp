@@ -53,7 +53,7 @@ MATERIALS = {
         "incisal_low": "IPS e.max Ceram Incisal I1",
         "incisal_high": "IPS e.max Ceram Incisal I2",
         "blue": "IPS e.max Ceram Transpa blue",
-        "mamelon_light": "IPS e.max Ceram Incisal I1",
+        "mamelon_light": "IPS e.max Ceram Dentin A1",
         "mamelon_warm": "IPS e.max Ceram Dentin A2",
         "blocker": "IPS e.max Ceram Deep Dentin BL3",
         "allowed_masses": {
@@ -544,18 +544,22 @@ def recipe_for_case(thirds, case_text, material):
         d_a = current["a"] - target["a"]
         name = third["name"]
         if name == "Cervical":
+            cervical_chroma = mat.get("dentin_chroma", mat["dentin"])
+            cervical_transition = mat["dentin"] if cervical_chroma != mat["dentin"] else mat["incisal_low"]
             masses = [
                 mass(mat["blocker"] if dark_substrate else mat["cervical_body"], 32 + (6 if d_l < -2 else 0), "cuerpo, valor profundo y bloqueo inicial" if dark_substrate else "cuerpo cervical y saturacion base"),
-                mass(mat.get("dentin_chroma", mat["dentin"]), 20, "recupera croma cervical con dentina del sistema"),
-                mass(mat["dentin"], 24, "transicion dentinaria y control de valor"),
+                mass(cervical_chroma, 20, "recupera croma cervical con dentina del sistema"),
+                mass(cervical_transition, 24, "transicion dentinaria y control de valor"),
                 mass(mat["neutral"], 24 - (6 if d_l < -2 else 0), "profundidad sin cerrar el margen"),
             ]
             note = "Aplicar fino y controlar el margen; si el sustrato es oscuro, usar wash de bloqueo antes de estratificar."
         elif name == "Medio":
+            middle_chroma = mat.get("dentin_chroma", mat["dentin"])
+            middle_effect = middle_chroma if middle_chroma != mat["dentin"] else mat["opal"]
             masses = [
                 mass(mat["dentin"], 38, "masa principal de valor y cuerpo medio"),
                 mass(mat["value"], 22, "sube luminosidad interna controlada"),
-                mass(mat.get("dentin_chroma", mat["dentin"]), 18, "ajuste de croma medio con dentina del sistema"),
+                mass(middle_effect, 18, "ajuste de croma medio y efecto interno sin duplicar masa base"),
                 mass(mat["neutral"], 22, "profundidad y fusion optica"),
             ]
             note = "Construir volumen principal con mamelones suaves y no sobreopacar el centro."
@@ -599,10 +603,24 @@ def validate_recipe_masses(recipe, material):
             "invalid": [],
         }
     invalid = sorted({mass["name"] for block in recipe for mass in block.get("masses", []) if mass["name"] not in allowed})
+    duplicate_blocks = []
+    for block in recipe:
+        names = [mass["name"] for mass in block.get("masses", [])]
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            duplicate_blocks.append(f"{block.get('third', 'tercio')}: " + ", ".join(duplicates))
+    if duplicate_blocks:
+        return {
+            "ok": False,
+            "detail": "Hay masas repetidas dentro de un tercio: " + "; ".join(duplicate_blocks),
+            "invalid": invalid,
+            "duplicates": duplicate_blocks,
+        }
     return {
         "ok": not invalid,
         "detail": "Todas las masas proceden de la lista blanca local del sistema." if not invalid else "Hay masas fuera de lista blanca: " + ", ".join(invalid),
         "invalid": invalid,
+        "duplicates": [],
     }
 
 
@@ -654,8 +672,8 @@ def build_validation(file_names, audio_transcripts, image_analysis, recipe, rag_
         {
             "id": "recipe_contract",
             "label": "Contrato de receta",
-            "ok": bool(recipe) and all(len(block.get("masses", [])) == 4 for block in recipe),
-            "detail": "4 masas por tercio" if recipe else "Receta pendiente de fotos validas",
+            "ok": bool(recipe) and all(len(block.get("masses", [])) == 4 and len({mass.get("name") for mass in block.get("masses", [])}) == 4 for block in recipe),
+            "detail": "4 masas unicas por tercio" if recipe else "Receta pendiente de fotos validas",
         },
         {
             "id": "mass_registry",
