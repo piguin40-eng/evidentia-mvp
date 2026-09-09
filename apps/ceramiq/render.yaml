@@ -10,3 +10,11 @@ services:
     envVars:
       - key: CERAMIQ_ENV
         value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CERAMIQ_AGENT_MODEL
+        value: gpt-4.1-mini
+      - key: CERAMIQ_ENABLE_OPENAI_AGENT
+        value: "1"
+      - key: CERAMIQ_ENABLE_WEB_SEARCH
+        value: "1"

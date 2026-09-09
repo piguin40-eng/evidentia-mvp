@@ -7,6 +7,8 @@ import tempfile
 import uuid
 import csv
 import os
+import urllib.error
+import urllib.request
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +27,8 @@ from prep_engine import (
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8787
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+PREP_AGENT_MODEL = os.environ.get("BIGCOLOR_PREP_AGENT_MODEL", "gpt-4.1-mini").strip()
 LOCAL_RANKING_SUMMARY = ROOT_DIR / "outputs" / "pedro-local-ranking-2026-08-06-summary.csv"
 LOCAL_RANKING_NUMERIC_COLUMNS = {
     "neighborhood_radius_mm",
@@ -213,6 +217,103 @@ def _local_ranking_payload(path: Path = LOCAL_RANKING_SUMMARY, top: int = 15) ->
     }
 
 
+def _safe_rows(rows: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
+    keep = [
+        "Diente",
+        "Zona",
+        "P50 espesor (mm)",
+        "P95 espesor (mm)",
+        "Deficit vs objetivo (mm)",
+        "Decision PREP",
+        "Evaluacion material",
+        "rag_status",
+        "technical_action_es",
+        "source_refs",
+    ]
+    safe = []
+    for row in rows[:limit]:
+        safe.append({key: row.get(key) for key in keep if key in row})
+    return safe
+
+
+def _fallback_prep_assistant(payload: dict[str, Any]) -> str:
+    analysis = payload.get("analysis") or {}
+    rows = payload.get("rows") or payload.get("table") or []
+    qa_gate = analysis.get("qa_gate") or {}
+    summary = analysis.get("distance_summary_mm") or {}
+    critical = [
+        row for row in rows
+        if "TALLAR" in str(row.get("Decision PREP") or "") or "REVISAR" in str(row.get("Decision PREP") or "")
+    ][:5]
+    parts = [
+        "Lectura BigColor PREP: primero valida registro, unidades y cobertura antes de convertir colores en decision clinica.",
+        f"QA gate: {qa_gate.get('status', 'sin_qa_gate')}.",
+        f"Espesor P50/P95: {summary.get('p50', '-')}/{summary.get('p95', '-')} mm.",
+    ]
+    if critical:
+        focus = "; ".join(
+            f"{row.get('Diente', '?')} {row.get('Zona', '?')}: {row.get('Decision PREP', 'revisar')}"
+            for row in critical
+        )
+        parts.append("Prioridad: " + focus + ".")
+    else:
+        parts.append("No detecto filas criticas en el resumen enviado; revisar visualmente zonas limite y fuente del material.")
+    parts.append("Sin OpenAI activo, esta lectura queda como resumen determinista, no como agente LLM.")
+    return " ".join(parts)
+
+
+def _call_openai_prep_assistant(payload: dict[str, Any]) -> str:
+    if not OPENAI_API_KEY:
+        return ""
+    analysis = payload.get("analysis") or {}
+    rows = payload.get("rows") or payload.get("table") or []
+    prompt = {
+        "analysis_summary": {
+            "qa_gate": analysis.get("qa_gate"),
+            "distance": analysis.get("distance"),
+            "registration": analysis.get("registration"),
+            "units": analysis.get("units"),
+            "distance_summary_mm": analysis.get("distance_summary_mm"),
+        },
+        "material": payload.get("material"),
+        "rows": _safe_rows(rows),
+        "question": payload.get("question") or "Da lectura tecnica breve del caso PREP.",
+    }
+    system = (
+        "Eres BigColor PREP Expert. Responde en espanol, breve y tecnico. "
+        "Tu trabajo es interpretar mediciones de preparacion dental, espesores por zona, QA gate, registro, unidades, deficit y accion tecnica. "
+        "No conviertas una medicion bloqueada por QA en autorizacion clinica. "
+        "Prioriza filas con deficit, baja cobertura, baja confianza o fuente pendiente. "
+        "No menciones claves, rutas locales ni nombres internos de agentes."
+    )
+    request_payload = json.dumps(
+        {
+            "model": PREP_AGENT_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 520,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=request_payload,
+        headers={
+            "Authorization": "Bearer " + OPENAI_API_KEY,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=22) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            return str(data["choices"][0]["message"]["content"]).strip()
+    except (OSError, urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, KeyError, IndexError, TypeError, TimeoutError):
+        return ""
+
+
 class PrepAppHandler(SimpleHTTPRequestHandler):
     server_version = "BigColorPREP/0.2"
 
@@ -238,6 +339,8 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
                     "normalRayDirections": list(NORMAL_RAY_DIRECTIONS),
                     "defaultRaySampleCount": DEFAULT_RAY_SAMPLE_COUNT,
                     "defaultRayMaxDepthMm": DEFAULT_RAY_MAX_DEPTH_MM,
+                    "openai_agent": "configured" if OPENAI_API_KEY else "missing",
+                    "agentModel": PREP_AGENT_MODEL,
                 }
             )
             return
@@ -247,6 +350,30 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if self.path == "/api/assistant":
+            try:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(content_length).decode("utf-8", errors="replace") if content_length > 0 else "{}"
+                payload = json.loads(raw or "{}")
+                answer = _call_openai_prep_assistant(payload)
+                agent_mode = "openai_agent" if answer else "local_expert_fallback"
+                if not answer:
+                    answer = _fallback_prep_assistant(payload)
+                self._send_json(
+                    {
+                        "ok": True,
+                        "engine": "BigColor PREP Expert",
+                        "agent_mode": agent_mode,
+                        "answer": answer,
+                        "openai_agent": "configured" if OPENAI_API_KEY else "missing",
+                    }
+                )
+            except Exception as exc:
+                self._send_json(
+                    {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+                    status=HTTPStatus.BAD_REQUEST,
+                )
+            return
         if self.path != "/api/analyze":
             self.send_error(HTTPStatus.NOT_FOUND, "Unknown endpoint.")
             return

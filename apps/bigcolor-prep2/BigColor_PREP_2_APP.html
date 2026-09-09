@@ -336,6 +336,8 @@
     <div id="engineBadge" class="smallbox" style="margin-bottom:10px">Motor pendiente de ejecutar.</div>
     <div id="qaGateBox" class="smallbox qa-gate" data-blocked-status="blocked_for_clinical_use" style="margin-bottom:10px">Puerta QA: pendiente de motor Python.</div>
     <div id="analysisStateBox" class="smallbox analysis-state" style="margin-bottom:10px">Estado de analisis: pendiente de motor Python.</div>
+    <button id="askPrepAi" class="primary" type="button" style="width:100%;margin-bottom:10px">Leer con IA</button>
+    <div id="prepAiBox" class="smallbox" style="margin-bottom:10px">Agente PREP pendiente de analisis.</div>
     <h2>QA ICP local</h2>
     <div id="localRankingBox" class="smallbox qa-ranking" style="margin-bottom:10px">Panel Pedro/Pekis pendiente de cargar.</div>
     <div class="row">
@@ -538,6 +540,8 @@ const zoneRows = document.getElementById("zoneRows");
 const engineBadge = document.getElementById("engineBadge");
 const analysisStateBox = document.getElementById("analysisStateBox");
 const localRankingBox = document.getElementById("localRankingBox");
+const askPrepAi = document.getElementById("askPrepAi");
+const prepAiBox = document.getElementById("prepAiBox");
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x06050c);
@@ -1135,6 +1139,7 @@ analyzeBtn.addEventListener("click", async () => {
     setStatus("Error: " + err.message);
   }
 });
+askPrepAi.addEventListener("click", askPrepAssistant);
 
 async function runEngineAnalysis(){
   const form = new FormData();
@@ -1170,6 +1175,34 @@ async function runEngineAnalysis(){
     throw new Error(payload.error || "Fallo en /api/analyze");
   }
   applyEngineResults(payload.analysis, payload.table || []);
+}
+
+async function askPrepAssistant(){
+  if(!lastAnalysis || !lastRows.length){
+    prepAiBox.textContent = "Ejecuta primero el analisis Python.";
+    return;
+  }
+  askPrepAi.disabled = true;
+  prepAiBox.textContent = "Consultando BigColor PREP Expert...";
+  try{
+    const res = await fetch("./api/assistant", {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        question: "Lee este caso PREP y dime prioridades tecnicas, bloqueos QA y accion por zonas criticas.",
+        material: materialSelect.value,
+        analysis: lastAnalysis.analysis,
+        rows: lastRows
+      })
+    });
+    const payload = await res.json();
+    if(!payload.ok) throw new Error(payload.error || "Fallo en /api/assistant");
+    prepAiBox.textContent = (payload.engine || "BigColor PREP Expert") + " | " + (payload.agent_mode || "local") + "\n" + (payload.answer || "Sin lectura disponible.");
+  }catch(err){
+    prepAiBox.textContent = "No se pudo consultar IA: " + err.message;
+  }finally{
+    askPrepAi.disabled = false;
+  }
 }
 
 function applyEngineResults(analysis, rows){

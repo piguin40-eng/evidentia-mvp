@@ -17,3 +17,7 @@ services:
         value: "8000"
       - key: BIGCOLOR_PREP_SAFE_VERTEX_CHUNK_SIZE
         value: "384"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BIGCOLOR_PREP_AGENT_MODEL
+        value: gpt-4.1-mini
