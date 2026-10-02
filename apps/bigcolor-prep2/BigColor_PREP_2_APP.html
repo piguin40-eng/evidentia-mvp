@@ -1208,7 +1208,7 @@ async function runEngineAnalysis(){
   if(landmarks){
     form.append("landmarks", landmarks, landmarks.name);
   }
-  if(demoLoaded && (!preopFile.files?.[0] || !waxupFile.files?.[0])){
+  if(demoLoaded){
     form.append("mode", "demo");
   }else{
     const preop = preopFile.files?.[0];
