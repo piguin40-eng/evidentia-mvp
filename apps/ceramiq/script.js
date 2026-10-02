@@ -663,3 +663,27 @@ if (clearCase) clearCase.addEventListener("click", async () => {
 });
 updateShot(0);
 loadSavedCase();
+
+// Fullscreen is user initiated; unsupported browsers retain full-width layout.
+(() => {
+  const button = document.getElementById('fullscreenButton');
+  const hint = document.getElementById('viewportHint');
+  if (!button) return;
+  if (!document.fullscreenEnabled) {
+    button.hidden = true;
+    hint.textContent = 'Vista ampliada';
+    return;
+  }
+  button.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+      hint.textContent = '';
+    } catch (_) { hint.textContent = 'El navegador no permite ocultar sus barras. La vista ya ocupa todo el ancho.'; }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const active = Boolean(document.fullscreenElement);
+    button.textContent = active ? 'Salir de pantalla completa ⛶' : 'Pantalla completa ⛶';
+    button.setAttribute('aria-pressed', String(active));
+  });
+})();
