@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import gc
+import threading
 import mimetypes
 import shutil
 import tempfile
@@ -27,6 +29,7 @@ from prep_engine import (
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8787
+ANALYSIS_SLOT = threading.BoundedSemaphore(1)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 PREP_AGENT_MODEL = os.environ.get("BIGCOLOR_PREP_AGENT_MODEL", "gpt-4.1-mini").strip()
 LOCAL_RANKING_SUMMARY = ROOT_DIR / "outputs" / "pedro-local-ranking-2026-08-06-summary.csv"
@@ -350,6 +353,19 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if self.path != "/api/analyze":
+            return self._do_post_impl()
+        if not ANALYSIS_SLOT.acquire(blocking=False):
+            self.close_connection = True
+            self._send_json({"ok": False, "error": "El motor esta ocupado con otra medicion. Espera unos segundos y vuelve a medir."}, status=HTTPStatus.TOO_MANY_REQUESTS)
+            return
+        try:
+            return self._do_post_impl()
+        finally:
+            gc.collect()
+            ANALYSIS_SLOT.release()
+
+    def _do_post_impl(self) -> None:
         if self.path == "/api/assistant":
             try:
                 content_length = int(self.headers.get("Content-Length", "0"))

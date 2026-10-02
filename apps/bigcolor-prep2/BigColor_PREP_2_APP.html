@@ -1218,8 +1218,10 @@ async function runEngineAnalysis(){
 
   engineBadge.textContent = "Motor Python ejecutando prep_engine.py...";
   const res = await fetch("./api/analyze", {method:"POST", body:form});
+  const contentType = res.headers.get('content-type') || '';
+  if(!contentType.includes('application/json')) throw new Error('El servidor no pudo completar la medicion (HTTP ' + res.status + '). Espera unos segundos y vuelve a medir.');
   const payload = await res.json();
-  if(!payload.ok){
+  if(!res.ok || !payload.ok){
     throw new Error(payload.error || "Fallo en /api/analyze");
   }
   if(revision !== analysisRevision) { setStatus("Los datos cambiaron durante el calculo. Vuelve a medir."); return; }
