@@ -2387,6 +2387,7 @@ def analyze_case(
     ray_sample_count: int = DEFAULT_RAY_SAMPLE_COUNT,
     ray_max_depth_mm: float = DEFAULT_RAY_MAX_DEPTH_MM,
     ray_direction: str = "bidirectional",
+    include_viewer: bool = False,
     local_registration_diagnostic_teeth: list[int] | None = None,
     local_registration_diagnostic_zones: list[str] | None = None,
     local_registration_neighborhood_radius_mm: float | None = None,
@@ -2556,6 +2557,26 @@ def analyze_case(
         },
         "clinical_caveat": "Demo tecnica: requiere validacion de registro, unidades, segmentacion y repetibilidad antes de uso clinico.",
     }
+    if include_viewer:
+        if measurement_method == "normal_ray":
+            analysis["measurement_viewer"] = {"status": "unavailable", "reason": "El metodo por rayos mide muestras, no vertices: mapa continuo no disponible."}
+        else:
+            vertices = np.asarray(waxup.vertices, dtype=float)
+            faces = np.asarray(waxup.faces, dtype=int)
+            if len(vertices) > 500000 or len(faces) > 1000000:
+                analysis["measurement_viewer"] = {"status": "unavailable", "reason": "Malla demasiado grande para transporte del mapa. Tabla conservada."}
+            elif not np.isfinite(vertices).all() or not np.isfinite(distances).all():
+                analysis["measurement_viewer"] = {"status": "unavailable", "reason": "Coordenadas o distancias no finitas."}
+            else:
+                analysis["measurement_viewer"] = {
+                    "status": "ready", "schema": "prep.vertex-distance.v1", "unit": "mm",
+                    "kind": "geometric_distance_not_clinical_decision",
+                    "method": distance_report.get("method"),
+                    "positions": np.round(vertices, 6).reshape(-1).tolist(),
+                    "indices": faces.reshape(-1).tolist(),
+                    "distances_mm": np.round(distances, 6).tolist(),
+                    "teeth": teeth.tolist(), "zones": zones.tolist(),
+                }
     return analysis, table
 
 

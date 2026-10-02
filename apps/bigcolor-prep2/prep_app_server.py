@@ -423,6 +423,7 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
                     preop_path=preop_path,
                     waxup_path=waxup_path,
                     material=material,
+                    include_viewer=_field_text(fields, "include_viewer", "0") == "1",
                     arch=arch,
                     apply_icp=apply_icp,
                     icp_report_only=icp_report_only,
