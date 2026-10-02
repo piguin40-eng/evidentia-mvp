@@ -899,6 +899,7 @@ function resize(){
   camera.aspect = rect.width / Math.max(rect.height, 1);
   camera.updateProjectionMatrix();
   renderer.setSize(rect.width, rect.height, false);
+  if(waxupMesh || preopMesh) centerAndFrame();
 }
 window.addEventListener("resize", resize);
 resize();
