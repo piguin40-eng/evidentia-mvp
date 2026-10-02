@@ -1110,6 +1110,8 @@ function resetAnalysisState(){
 
 loadDemoBtn.addEventListener("click", async () => {
   try{
+    resetAnalysisState();
+    analyzeBtn.disabled = true;
     setStatus("Cargando demo local...");
     const [pre, wax] = await Promise.all([loadStlUrl(DEMO_PREOP), loadStlUrl(DEMO_WAXUP)]);
     await setMeshes(pre, wax);
@@ -1128,6 +1130,8 @@ landmarksFile.addEventListener("change", handleLandmarksSelection);
 async function handlePreopSelection(){
   const file = preopFile.files?.[0];
   if(!file) return;
+  resetAnalysisState();
+  analyzeBtn.disabled = true;
   try{
     preopFileName.textContent = file.name;
     setStatus("Cargando preoperatorio en visor...");
@@ -1142,6 +1146,8 @@ async function handlePreopSelection(){
 async function handleWaxupSelection(){
   const file = waxupFile.files?.[0];
   if(!file) return;
+  resetAnalysisState();
+  analyzeBtn.disabled = true;
   try{
     waxupFileName.textContent = file.name;
     setStatus("Cargando encerado en visor...");
