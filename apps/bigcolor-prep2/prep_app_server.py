@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import gc
 import threading
+import ctypes
+import sys
 import mimetypes
 import shutil
 import tempfile
@@ -30,6 +32,19 @@ from prep_engine import (
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_PORT = 8787
 ANALYSIS_SLOT = threading.BoundedSemaphore(1)
+def release_analysis_memory():
+    gc.collect()
+    # Linux/glibc retains freed NumPy/trimesh arenas across changing mesh sizes.
+    # Return unused heap pages before admitting the next calculation.
+    if sys.platform.startswith("linux"):
+        try:
+            trim = ctypes.CDLL(None).malloc_trim
+            trim.argtypes = [ctypes.c_size_t]
+            trim.restype = ctypes.c_int
+            trim(0)
+        except (AttributeError, OSError):
+            pass
+
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 PREP_AGENT_MODEL = os.environ.get("BIGCOLOR_PREP_AGENT_MODEL", "gpt-4.1-mini").strip()
 LOCAL_RANKING_SUMMARY = ROOT_DIR / "outputs" / "pedro-local-ranking-2026-08-06-summary.csv"
@@ -362,7 +377,7 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
         try:
             return self._do_post_impl()
         finally:
-            gc.collect()
+            release_analysis_memory()
             ANALYSIS_SLOT.release()
 
     def _do_post_impl(self) -> None:
@@ -482,7 +497,7 @@ class PrepAppHandler(SimpleHTTPRequestHandler):
         return mimetypes.guess_type(path)[0] or super().guess_type(path)
 
     def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
-        body = (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        body = (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

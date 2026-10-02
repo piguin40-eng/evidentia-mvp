@@ -2523,6 +2523,10 @@ def analyze_case(
     table = pd.concat([table, technical_sentence], axis=1)
     table["Frase visible"] = table.apply(_visible_zone_sentence, axis=1)
 
+    # Geometry caches are no longer needed after measurement/table generation.
+    # Release normals/triangles/adjacency before allocating the JSON transport.
+    preop._cache.clear()
+    waxup._cache.clear()
     analysis = {
         "preop": str(preop_path),
         "waxup": str(waxup_path),
