@@ -9,8 +9,8 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import PurePosixPath
 from urllib.parse import unquote, urlsplit
 
-START = datetime.fromisoformat('2026-09-18T00:00:00+02:00').timestamp()
-END = datetime.fromisoformat('2026-09-23T00:00:00+02:00').timestamp()
+START = datetime.fromisoformat('2026-10-20T00:00:00+02:00').timestamp()
+END = datetime.fromisoformat('2026-12-01T00:00:00+01:00').timestamp()
 PASSWORD = os.environ.get('COURSE_BETA_PASSWORD', '')
 if len(PASSWORD) < 8:
     raise RuntimeError('COURSE_BETA_PASSWORD must have at least eight characters')
@@ -51,7 +51,7 @@ def parse_request(handler):
         return reply(handler, 200, 'ok')
     status = access_status(handler.headers.get('Authorization', ''), datetime.now(timezone.utc).timestamp())
     if status != 200:
-        return reply(handler, status, 'Acceso disponible del 18 al 22 de septiembre de 2026 (Madrid).' if status == 403 else 'Introduce el usuario y la contraseña del curso.', status == 401)
+        return reply(handler, status, 'Acceso disponible del 20 de octubre al 30 de noviembre de 2026 (Madrid).' if status == 403 else 'Introduce el usuario y la contraseña del curso.', status == 401)
     parts = PurePosixPath(path).parts
     blocked = {'data', 'deploy', '.git', 'backups', 'scripts', 'sources', 'index', 'qa'}
     if any(p.startswith('.') or p in blocked for p in parts[1:]) or path.startswith(('/api/admin/', '/api/account/', '/api/connectors/export')) or (handler.command not in ('GET','HEAD') and path.startswith(('/api/billing/', '/api/ai/client-config'))):
