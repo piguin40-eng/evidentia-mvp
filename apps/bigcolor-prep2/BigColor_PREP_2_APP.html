@@ -219,6 +219,15 @@
     body.viewer-expanded #stage{position:absolute;inset:0;width:100%;height:100dvh;min-height:0;}
     body.viewer-expanded{overflow:hidden;}
     @media(max-width:980px){#app > aside:first-child{padding-top:66px;} #right{padding-top:16px;}}
+    #mapState{position:absolute;top:160px;left:12px;z-index:4;background:#14282df2;padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:none;}
+    #pointReadout{position:absolute;z-index:8;pointer-events:none;background:#071215f5;border:1px solid #52c7d8;border-radius:9px;padding:8px 12px;color:white;box-shadow:0 4px 18px #0008;min-width:135px;}
+    #pointReadout strong{display:block;font-size:25px;line-height:1.2;}
+    #pointReadout small{color:#bfd6d5;}
+    #zoneSummary{position:absolute;top:114px;left:12px;z-index:7;max-width:calc(100% - 24px);background:#0c191ff2;border:1px solid #45636b;border-radius:8px;padding:9px;}
+    #zoneSummary summary{cursor:pointer;font-size:13px;font-weight:700;}
+    #zoneSummary .zone-scroll{max-height:45vh;overflow:auto;}
+    #zoneSummary table{font-size:12px;}
+    #zoneSummary th,#zoneSummary td{padding:7px;white-space:nowrap;}
   </style>
   <script type="importmap">
     {
@@ -339,6 +348,9 @@
 
   <main id="stage">
 <div style="position:absolute;top:64px;left:12px;z-index:3;background:#111d22e8;padding:8px;border-radius:8px;font-size:12px;max-width:85%">Mapa geometrico en mm · QA tecnico, no indicacion de tallado</div>
+    <div id="mapState" role="status">Mapa pendiente · carga dos STL y pulsa Medir espesores.</div>
+    <div id="pointReadout" hidden><strong></strong><small></small></div>
+    <details id="zoneSummary"><summary>Ver mediciones por diente · v2</summary><div class="zone-scroll"><p>Mediana P50 (mm). Zonas dentales estimadas, no segmentacion validada.</p><table><thead><tr><th>Zona dental</th><th>Cervical</th><th>Medio</th><th>Incisal</th></tr></thead><tbody id="toothMeasurements"><tr><td colspan="4">Pulsa Medir espesores.</td></tr></tbody></table></div></details>
     <div id="hoverCard">
       <div class="muted">Pasa el cursor por el encerado</div>
       <div class="big">Sin lectura</div>
@@ -1076,6 +1088,9 @@ async function setWaxupGeometry(geometry, sourceName = "encerado"){
 
 function resetAnalysisState(){
   analysisRevision++;
+  document.getElementById('mapState').textContent = 'Mapa pendiente · pulsa Medir espesores.';
+  document.getElementById('pointReadout').hidden = true;
+  document.getElementById('toothMeasurements').innerHTML = '<tr><td colspan="4">Vuelve a medir.</td></tr>';
   if(waxupMesh){ waxupMesh.geometry.deleteAttribute('color'); waxupMesh.material.vertexColors = false; waxupMesh.material.color.set(0xd9f3f1); waxupMesh.material.needsUpdate = true; }
   hoverCard.querySelector('.big').textContent = 'Sin lectura';
   hoverMeta.textContent = 'Vuelve a medir tras cambiar los datos.';
@@ -1165,6 +1180,7 @@ analyzeBtn.addEventListener("click", async () => {
   }catch(err){
     console.error(err);
     setStatus("Error: " + err.message);
+    document.getElementById("mapState").textContent = "No se pudo calcular: " + err.message;
   }finally{ updateAnalyzeAvailability(); }
 });
 askPrepAi.addEventListener("click", askPrepAssistant);
@@ -1172,6 +1188,7 @@ askPrepAi.addEventListener("click", askPrepAssistant);
 async function runEngineAnalysis(){
   resetAnalysisState();
   const revision = analysisRevision;
+  document.getElementById("mapState").textContent = "Calculando mapa Python…";
   const form = new FormData();
   const requestedMethod = exactSurface.checked ? "exact_surface" : measurementMethod.value;
   form.append("include_viewer", "1");
@@ -1243,6 +1260,7 @@ function applyEngineMap(map){
   if(!map || map.status !== 'ready') {
     setStatus(statusBox.textContent + " Mapa no disponible: " + (map?.reason || 'el servidor no envio geometria'));
     hoverCard.querySelector('.big').textContent = 'Mapa no disponible';
+    document.getElementById('mapState').textContent = 'Mapa no disponible: ' + (map?.reason || 'vuelve a cargar la pagina');
     return;
   }
   const n = map.positions.length / 3;
@@ -1265,6 +1283,7 @@ function applyEngineMap(map){
   lastTeeth = map.teeth;
   lastZones = map.zones;
   centerAndFrame();
+  document.getElementById('mapState').textContent = 'Mapa activo · ' + n.toLocaleString('es') + ' vertices · mueve el cursor o toca un diente';
   hoverCard.querySelector('.big').textContent = 'Toca el modelo';
   hoverMeta.textContent = 'Mapa geometrico Python en mm. No indica donde tallar.';
   setStatus(statusBox.textContent + ' Mapa Python conectado: ' + n + ' vertices. Toca el modelo para leer mm.');
@@ -1279,6 +1298,13 @@ function applyEngineResults(analysis, rows){
     table: rows
   };
   lastRows = rows;
+  const groups = new Map();
+  rows.forEach(row => {
+    const tooth = String(row.Diente);
+    if(!groups.has(tooth)) groups.set(tooth, {});
+    groups.get(tooth)[row.Zona] = finiteNumberOrNull(row['P50 firmado (mm)']);
+  });
+  document.getElementById('toothMeasurements').innerHTML = [...groups].map(([tooth, zones]) => '<tr><td>' + escapeHtml(tooth) + '</td>' + ['Cervical','Medio','Incisal'].map(zone => '<td>' + (zones[zone] == null ? '—' : zones[zone].toFixed(2)) + '</td>').join('') + '</tr>').join('');
   const summary = analysis.distance_summary_mm || {};
   document.getElementById("p50").textContent = formatMm(summary.p50);
   document.getElementById("p95").textContent = formatMm(summary.p95);
@@ -2422,6 +2448,9 @@ function readMeasurementAtPointer(event){
   raycaster.setFromCamera(mouse, camera);
   const hit = raycaster.intersectObject(waxupMesh, false)[0];
   if(!hit || hit.faceIndex == null){
+    document.getElementById('pointReadout').hidden = true;
+    hoverCard.querySelector('.big').textContent = 'Sobre el diente';
+    hoverMeta.textContent = 'Mueve el cursor o toca la superficie coloreada para leer mm.';
     return;
   }
   const indices = [hit.face.a, hit.face.b, hit.face.c];
@@ -2436,10 +2465,20 @@ function readMeasurementAtPointer(event){
   const d2 = lastDistances[indices[2]];
   const d = (bary.x * d0) + (bary.y * d1) + (bary.z * d2);
   const nearestOffset = bary.x >= bary.y && bary.x >= bary.z ? 0 : bary.y >= bary.z ? 1 : 2;
+  if(!Number.isFinite(d)) return;
   const vertexIndex = indices[nearestOffset];
   const tooth = lastTeeth[vertexIndex];
   const zone = lastZones[vertexIndex];
   updateHoverMeasurement(d, tooth, zone, "punto " + hit.point.x.toFixed(1) + ", " + hit.point.y.toFixed(1) + ", " + hit.point.z.toFixed(1));
+  const tooltip = document.getElementById('pointReadout');
+  tooltip.hidden = false;
+  tooltip.querySelector('strong').textContent = d.toFixed(2) + ' mm';
+  tooltip.querySelector('small').textContent = 'Zona estimada ' + tooth + ' · ' + zone;
+  tooltip.dataset.tooth = String(tooth);
+  tooltip.dataset.distanceMm = String(d);
+  const bounds = stage.getBoundingClientRect();
+  tooltip.style.left = Math.max(4, Math.min(bounds.width - tooltip.offsetWidth - 4, event.clientX - bounds.left + 16)) + 'px';
+  tooltip.style.top = Math.max(4, Math.min(bounds.height - tooltip.offsetHeight - 4, event.clientY - bounds.top - tooltip.offsetHeight - 16)) + 'px';
 }
 
 function readNearestProjectedVertex(event, rect){
@@ -2481,7 +2520,9 @@ function updateHoverMeasurement(distance, tooth, zone, source){
 
 renderer.domElement.addEventListener("pointermove", readMeasurementAtPointer, {passive:false});
 renderer.domElement.addEventListener("pointerdown", readMeasurementAtPointer, {passive:false});
-renderer.domElement.addEventListener("mousemove", readMeasurementAtPointer, {passive:false});
+renderer.domElement.addEventListener('pointerleave', () => {
+  document.getElementById('pointReadout').hidden = true;
+});
 renderer.domElement.addEventListener("click", readMeasurementAtPointer, {passive:false});
 </script>
 <script>
