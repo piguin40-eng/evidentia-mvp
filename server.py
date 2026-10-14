@@ -2468,7 +2468,7 @@ class Handler(BaseHTTPRequestHandler):
             if not filename_match:
                 continue
             original_name = Path(filename_match.group(1)).name or "archivo"
-            body = body.rstrip(b"\r\n-")
+            body = body.removesuffix(b"\r\n")
             digest = hashlib.sha256(body).hexdigest()
             stored_name = f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{digest[:12]}_{safe_filename(original_name)}"
             target = UPLOAD_DIR / stored_name

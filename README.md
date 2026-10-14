@@ -15,3 +15,5 @@ Disponible para pruebas técnicas desde el despliegue; fin de acceso predetermin
 El acceso de esta versión es COMPARTIDO: todos los alumnos de la misma instancia ven los datos que incorporen. Solo prácticas ficticias. Para cuadernos privados, desplegar una instancia y un volumen independientes por alumno. Conocimiento cero describe el estado inicial, no implica aislamiento multiusuario.
 
 La recuperación local empieza sin fuentes y necesita que los alumnos incorporen material. Exportar los resultados antes de que caduque el acceso. Este ZIP no acredita que una URL de Render esté desplegada ni verificada.
+
+En Render: montar disco nuevo en `/opt/render/project/src/course-data` y usar esa misma ruta como `COURSE_DATA_DIR`. No usar una ruta externa al directorio de la aplicación.

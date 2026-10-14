@@ -7,6 +7,9 @@ from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('COURSE_DATA_DIR', str(ROOT / 'course-data'))).resolve()
+if ROOT not in DATA.parents:
+    raise RuntimeError('Mount the independent course volume inside the app directory, at course-data.')
+DATA_URL = '/' + str(DATA.relative_to(ROOT))
 MARKER = DATA / '.course-zero-node'
 if not os.environ.get('EVIDENTIA_BASIC_AUTH_USER') or len(os.environ.get('EVIDENTIA_BASIC_AUTH_PASSWORD', '')) < 20:
     raise RuntimeError('Configure independent course credentials (password >=20 characters).')
@@ -49,7 +52,7 @@ def parse_request(self):
     if any(part.startswith('.') for part in path.split('/') if part):
         self.send_error(403)
         return False
-    if path != '/' and not path.startswith('/api/') and path not in static_files and not path.startswith('/assets/'):
+    if path != '/' and not path.startswith('/api/') and path not in static_files and not path.startswith(('/assets/', DATA_URL + '/uploads/', DATA_URL + '/derived/')):
         self.send_error(403)
         return False
     return True
