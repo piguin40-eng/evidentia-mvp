@@ -187,8 +187,8 @@ async function persistRecord(record) {
 
 function aiStatusLabel() {
   if (state.aiProvider && state.aiProvider.active) return "IA activa";
-  if (state.apiOnline) return "Conectado a IA";
-  return "IA local";
+  if (state.apiOnline) return "Nodo conectado";
+  return "Sin conexión al nodo";
 }
 
 function setAiState(stateName, label) {
@@ -374,7 +374,7 @@ function renderIntake() {
   const aiActive = Boolean(state.aiProvider && state.aiProvider.active);
   return '<section class="evidentia-home">' +
     '<article class="evidentia-hero">' +
-    '<div class="hero-copy"><span class="eyebrow">Evidentia Local Node</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Memoria privada.<br>Fuentes visibles.<br>Decision humana.</p><p class="hero-subclaim">Mirror consultable con trazabilidad para notas, fotos, audio, video, PDFs y criterio del equipo. No diagnostica: prepara decisiones revisables.</p>' +
+    '<div class="hero-copy"><span class="eyebrow">Evidentia Local Node</span><h1 class="brand-word hero-brand-word">' + BRAND_WORD + '</h1><p class="hero-claim">Curso compartido.<br>Conocimiento inicial cero.</p><p class="hero-subclaim">Espacio de práctica compartido: otros alumnos pueden ver lo guardado. Usa únicamente material ficticio o autorizado para compartir. Sin datos privados de Miguel.</p>' +
     '<div class="hero-actions"><button class="primary" data-focus-notes type="button">Capturar conocimiento</button><button class="secondary" data-set-view="chat" type="button">Preguntar al mirror</button><button class="secondary" data-set-view="connectors" type="button">Conectar agentes</button><button class="secondary" data-download-consent type="button">Consentimiento</button></div></div>' +
     '<div class="hero-visual" aria-label="Evidentia en funcionamiento">' +
     '<video class="hero-video" autoplay muted loop playsinline disablepictureinpicture preload="metadata" poster="./assets/evidentia/evidentia-reference-hero-poster.jpg?v=' + HERO_VIDEO_VERSION + '"><source src="./assets/evidentia/evidentia-reference-hero.mp4?v=' + HERO_VIDEO_VERSION + '" type="video/mp4"></video>' +
@@ -400,7 +400,7 @@ function renderIntake() {
     '<div class="field-row"><label>Area libre<select id="domain"><option>Conocimiento general del centro</option><option>Operacion / procesos</option><option>Equipo / formacion</option><option>Docencia / investigacion</option><option>Odontologia general</option><option>Ortodoncia</option><option>Estetica y rehabilitacion</option><option>Implantes</option><option>Periodoncia</option><option>Laboratorio</option><option>Otro conocimiento</option></select></label><label>Tipo de entrada<select id="recordType"><option>Registro de conocimiento</option><option>Transcripcion</option><option>Articulo de conocimiento</option><option>Caso de exito</option><option>Caso de no exito</option><option>Archivo de conocimiento</option><option>Nota de conocimiento</option><option>Protocolo</option><option>Seguimiento</option><option>Idea o aprendizaje</option></select></label></div>' +
     '<div class="field-row"><label>Persona, caso, proyecto o referencia<input id="patient" autocomplete="off" placeholder="Iniciales, numero de caso, proyecto o referencia interna"></label><label>Responsable<input id="operator" autocomplete="off" placeholder="Profesional, tecnico, responsable, direccion o equipo"></label></div>' +
     '<label>Nota<textarea id="notes" rows="11" placeholder="Escribe o pega aqui el contenido importante."></textarea></label>' +
-    '<div class="field-row"><label>Archivos<input id="files" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.html,.xml"><small class="field-hint">Audio y video quedan listos para consulta al guardar.</small></label><label>Fecha<input id="captureDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label></div>' +
+    '<div class="field-row"><label>Archivos<input id="files" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json,.html,.xml"><small class="field-hint">La consulta de audio y vídeo requiere transcripción disponible.</small></label><label>Fecha<input id="captureDate" type="date" value="' + new Date().toISOString().slice(0, 10) + '"></label></div>' +
     '<div class="actions"><button class="primary" type="submit">Guardar</button><button class="secondary" id="loadSample" type="button">Usar plantilla</button><button class="secondary" data-set-view="cases" type="button">Ver registros</button></div>' +
     '</form></article>' +
     '<article class="card pipeline-card"><canvas class="cube-canvas pipeline-cube-canvas" width="330" height="300" aria-hidden="true"></canvas>' +
@@ -446,7 +446,7 @@ function renderKnowledgeRoutingBand() {
     '<div class="routing-flow">' +
     routingNode("01", "Conocimiento", recordCount + " registros", "Notas, protocolos, decisiones y contexto del equipo.") +
     routingNode("02", "Vector RAG", chunks + " fragmentos", "Busqueda semantica local con fuentes recuperables.") +
-    routingNode("03", "Agentes internos", "Pedro / Faki / conocimiento dental", "Roles que consultan sin inventar y citan origen.") +
+    routingNode("03", "Agentes internos", "Exportación con fuentes", "Roles que consultan sin inventar y citan origen.") +
     routingNode("04", "Projects", "Claude / ChatGPT", "Memoria exportable para trabajo por proyecto.") +
     routingNode("05", "Control", "Consentimiento", "Permisos, limites y revision humana antes de uso externo.") +
     '</div>' +
